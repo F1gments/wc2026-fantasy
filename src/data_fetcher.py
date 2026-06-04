@@ -9,56 +9,61 @@ from fifa_client import FifaFantasyClient
 RAW_DIR = Path(__file__).parent.parent / "data" / "raw"
 
 
-POSITION_MAP = {
-    1: "GK", "GK": "GK",
-    2: "DEF", "DF": "DEF",
-    3: "MID", "MF": "MID",
-    4: "FWD", "FW": "FWD",
-}
+def _build_squad_map(client: FifaFantasyClient) -> dict[int, str]:
+    squads = client.get_squads()
+    squads = squads.get("data", squads) if isinstance(squads, dict) else squads
+    return {s["id"]: s["abbr"] for s in squads}
 
 
 def fetch_players(client: FifaFantasyClient) -> pd.DataFrame:
+    squad_map = _build_squad_map(client)
     raw = client.get_players()
+
     RAW_DIR.mkdir(parents=True, exist_ok=True)
     (RAW_DIR / "players_raw.json").write_text(json.dumps(raw, indent=2))
 
     rows = []
     for p in raw:
-        pos_raw = p.get("position") or p.get("positionId") or p.get("pos")
+        stats = p.get("stats") or {}
+        name = p.get("knownName") or f"{p.get('firstName','')} {p.get('lastName','')}".strip()
         rows.append({
-            "id":         str(p.get("id") or p.get("playerId", "")),
-            "name":       p.get("name") or p.get("knownName") or p.get("lastName", "Unknown"),
-            "country":    p.get("teamAbbr") or p.get("country") or p.get("team", ""),
-            "position":   POSITION_MAP.get(pos_raw, str(pos_raw)),
-            "price":      float(p.get("value") or p.get("price") or p.get("cost", 0)),
-            "total_pts":  float(p.get("totalPoints") or p.get("points") or 0),
-            "form":       float(p.get("form") or p.get("recentPoints") or 0),
-            "selected_pct": float(p.get("selectedByPercent") or p.get("ownership") or 0),
-            "goals":      int(p.get("goals") or p.get("goalsScored") or 0),
-            "assists":    int(p.get("assists") or 0),
-            "clean_sheets": int(p.get("cleanSheets") or 0),
-            "yellow_cards": int(p.get("yellowCards") or 0),
-            "red_cards":  int(p.get("redCards") or 0),
-            "minutes":    int(p.get("minutesPlayed") or p.get("minutes") or 0),
+            "id":           str(p["id"]),
+            "name":         name,
+            "country":      squad_map.get(p.get("squadId"), "UNK"),
+            "position":     p.get("position", ""),
+            "price":        float(p.get("price") or 0),
+            "status":       p.get("status", ""),
+            "total_pts":    float(stats.get("totalPoints") or 0),
+            "avg_pts":      float(stats.get("avgPoints") or 0),
+            "form":         float(stats.get("form") or 0),
+            "last_round":   float(stats.get("lastRoundPoints") or 0),
+            "ownership":    float(p.get("percentSelected") or 0),
+            "one_to_watch": bool(p.get("oneToWatch")),
         })
 
     df = pd.DataFrame(rows)
     df = df[df["price"] > 0]
-    return df
+    df = df[df["position"].isin(["GK", "DEF", "MID", "FWD"])]
+    return df.reset_index(drop=True)
 
 
 def enrich_value_metrics(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     df["pts_per_m"] = df["total_pts"] / df["price"].replace(0, pd.NA)
-    df["form_per_m"] = df["form"] / df["price"].replace(0, pd.NA)
 
-    # Weighted score: blends season total and recent form
+    # Pre-tournament: no points yet, so rank on price as proxy for perceived quality,
+    # then blend ownership (crowd wisdom) and one_to_watch flag.
+    # When the tournament starts total_pts/form will dominate naturally.
     max_pts = df["total_pts"].max() or 1
     max_form = df["form"].max() or 1
+    max_own  = df["ownership"].max() or 1
+
     df["value_score"] = (
-        0.5 * df["total_pts"] / max_pts +
-        0.5 * df["form"]     / max_form
-    ) / df["price"].replace(0, pd.NA)
+        0.4 * df["total_pts"]  / max_pts  +
+        0.3 * df["form"]       / max_form +
+        0.2 * df["ownership"]  / max_own  +
+        0.1 * df["one_to_watch"].astype(float)
+    ) / df["price"]
 
     return df
 
@@ -67,27 +72,45 @@ def load_or_fetch(client: FifaFantasyClient) -> pd.DataFrame:
     cache = RAW_DIR / "players_raw.json"
     if cache.exists():
         print(f"Using cached player data ({cache})")
+        # Re-parse from cache via a lightweight mock
         raw = json.loads(cache.read_text())
-        df = fetch_players.__wrapped__(raw) if hasattr(fetch_players, "__wrapped__") else None
-        if df is None:
-            # Re-parse from cached raw
-            client_mock = type("M", (), {"get_players": lambda s: raw})()
-            df = fetch_players(client_mock)
+        squad_map = _build_squad_map(client)
+        rows = []
+        for p in raw:
+            stats = p.get("stats") or {}
+            name = p.get("knownName") or f"{p.get('firstName','')} {p.get('lastName','')}".strip()
+            rows.append({
+                "id":           str(p["id"]),
+                "name":         name,
+                "country":      squad_map.get(p.get("squadId"), "UNK"),
+                "position":     p.get("position", ""),
+                "price":        float(p.get("price") or 0),
+                "status":       p.get("status", ""),
+                "total_pts":    float((p.get("stats") or {}).get("totalPoints") or 0),
+                "avg_pts":      float((p.get("stats") or {}).get("avgPoints") or 0),
+                "form":         float((p.get("stats") or {}).get("form") or 0),
+                "last_round":   float((p.get("stats") or {}).get("lastRoundPoints") or 0),
+                "ownership":    float(p.get("percentSelected") or 0),
+                "one_to_watch": bool(p.get("oneToWatch")),
+            })
+        df = pd.DataFrame(rows)
+        df = df[df["price"] > 0]
+        df = df[df["position"].isin(["GK", "DEF", "MID", "FWD"])]
+        df = df.reset_index(drop=True)
     else:
         df = fetch_players(client)
 
-    df = enrich_value_metrics(df)
-    return df
+    return enrich_value_metrics(df)
 
 
 if __name__ == "__main__":
-    from fifa_client import FifaFantasyClient
     import os
     token = os.getenv("FIFA_SESSION_TOKEN")
     client = FifaFantasyClient(session_token=token)
     df = fetch_players(client)
     df = enrich_value_metrics(df)
-    print(df.groupby("position").size())
-    print(df.sort_values("value_score", ascending=False).head(20)[
-        ["name", "country", "position", "price", "total_pts", "value_score"]
-    ].to_string())
+    print(df.groupby("position").agg(count=("id","count"), avg_price=("price","mean")).to_string())
+    print("\nTop 15 by value score:")
+    print(df.sort_values("value_score", ascending=False).head(15)[
+        ["name", "country", "position", "price", "ownership", "value_score"]
+    ].to_string(index=False))

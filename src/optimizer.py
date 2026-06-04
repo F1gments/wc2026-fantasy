@@ -8,11 +8,12 @@ import pandas as pd
 import pulp
 
 
-# Default squad rules — will be overridden by game_config if available
+# Squad rules from play.fifa.com: $100m budget, 15 players (2GK 5DEF 5MID 3FWD)
+# Starting XI selection is flexible within those 15 — optimizer picks best 11
 DEFAULT_RULES = {
     "budget": 100.0,
-    "formation": {"GK": 1, "DEF": 4, "MID": 4, "FWD": 2},
-    "bench": {"GK": 1, "DEF": 1, "MID": 1, "FWD": 1},
+    "squad": {"GK": 2, "DEF": 5, "MID": 5, "FWD": 3},
+    "starting": {"GK": 1, "DEF": 4, "MID": 4, "FWD": 2},  # default 4-4-2
     "max_per_country": 3,
 }
 
@@ -35,15 +36,13 @@ def build_squad(
 
     df = df[~df["id"].isin(excluded)].copy()
 
-    formation = rules["formation"]
-    bench_slots = rules["bench"]
+    squad_need   = rules["squad"]      # total per position (e.g. GK:2, DEF:5 ...)
+    starting_need = rules["starting"]  # starters per position (e.g. GK:1, DEF:4 ...)
     budget = rules["budget"]
     max_country = rules["max_per_country"]
 
-    positions = list(formation.keys())
-    starting_need = {p: formation[p] for p in positions}
-    bench_need   = {p: bench_slots.get(p, 0) for p in positions}
-    total_need   = {p: starting_need[p] + bench_need[p] for p in positions}
+    positions = list(squad_need.keys())
+    bench_need = {p: squad_need[p] - starting_need[p] for p in positions}
 
     # Only keep players in known positions
     df = df[df["position"].isin(positions)].reset_index(drop=True)
