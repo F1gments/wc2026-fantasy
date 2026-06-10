@@ -1,19 +1,18 @@
 """
-Moneyball-style squad optimizer using linear programming (PuLP).
+Moneyball squad optimizer using linear programming (PuLP).
 
-Selects an 11-player starting XI + 4 bench players that maximises
-value_score subject to budget, position, and per-country constraints.
+Objective: maximise expected tournament points (xpts) for the starting XI,
+using the official WC2026 Fantasy scoring system as the model.
 """
 import pandas as pd
 import pulp
 
 
-# Squad rules from play.fifa.com: $100m budget, 15 players (2GK 5DEF 5MID 3FWD)
-# Starting XI selection is flexible within those 15 — optimizer picks best 11
+# Official WC2026 Fantasy squad rules
 DEFAULT_RULES = {
-    "budget": 100.0,
-    "squad": {"GK": 2, "DEF": 5, "MID": 5, "FWD": 3},
-    "starting": {"GK": 1, "DEF": 4, "MID": 4, "FWD": 2},  # default 4-4-2
+    "budget":      100.0,
+    "squad":       {"GK": 2, "DEF": 5, "MID": 5, "FWD": 3},
+    "starting":    {"GK": 1, "DEF": 4, "MID": 4, "FWD": 2},  # 4-4-2 default
     "max_per_country": 3,
 }
 
@@ -25,43 +24,58 @@ def build_squad(
     excluded: list[str] = None,
 ) -> dict:
     """
-    Returns {"starting_xi": DataFrame, "bench": DataFrame, "total_cost": float, "total_score": float}
-
-    locked_in:  list of player IDs that must be included
-    excluded:   list of player IDs to exclude
+    Returns {
+      "starting_xi": DataFrame,
+      "bench": DataFrame,
+      "captain": str (player name),
+      "vice_captain": str,
+      "total_cost": float,
+      "total_xpts": float,
+    }
+    locked_in: list of player IDs forced into the squad
+    excluded:  list of player IDs to ignore
     """
     rules = {**DEFAULT_RULES, **(rules or {})}
     locked_in = set(locked_in or [])
-    excluded = set(excluded or [])
+    excluded  = set(excluded or [])
 
     df = df[~df["id"].isin(excluded)].copy()
 
-    squad_need   = rules["squad"]      # total per position (e.g. GK:2, DEF:5 ...)
-    starting_need = rules["starting"]  # starters per position (e.g. GK:1, DEF:4 ...)
-    budget = rules["budget"]
-    max_country = rules["max_per_country"]
+    squad_need   = rules["squad"]
+    starting_need = rules["starting"]
+    budget       = rules["budget"]
+    max_country  = rules["max_per_country"]
 
-    positions = list(squad_need.keys())
+    positions  = list(squad_need.keys())
     bench_need = {p: squad_need[p] - starting_need[p] for p in positions}
 
-    # Only keep players in known positions
-    df = df[df["position"].isin(positions)].reset_index(drop=True)
+    df = df[df["position"].isin(positions)]
+
+    # Filter out near-certain non-starters using price floor + ownership threshold
+    # Ownership < threshold almost always means a backup who won't see minutes
+    price_floors   = rules.get("price_floors",   {"GK": 4.5, "DEF": 4.0, "MID": 4.5, "FWD": 4.5})
+    min_ownership  = rules.get("min_ownership",  {"GK": 1.0, "DEF": 0.0, "MID": 0.0, "FWD": 0.0})
+    def is_eligible(r):
+        return (r["price"]     >= price_floors.get(r["position"], 0) and
+                r["ownership"] >= min_ownership.get(r["position"], 0))
+    df = df[df.apply(is_eligible, axis=1)].reset_index(drop=True)
+
+    # Use xpts if available, fall back to value_score * price (same shape)
+    obj_col = "xpts" if "xpts" in df.columns else "value_score"
 
     prob = pulp.LpProblem("FantasySquad", pulp.LpMaximize)
 
-    # x[i] = 1 if player i is in starting XI
-    # b[i] = 1 if player i is on bench
     x = [pulp.LpVariable(f"x_{i}", cat="Binary") for i in range(len(df))]
     b = [pulp.LpVariable(f"b_{i}", cat="Binary") for i in range(len(df))]
 
-    # Objective: maximise starting XI value_score (bench weighted less)
+    # Objective: maximise starting XI xpts; bench weighted 10% (bench scores but doesn't count)
     prob += pulp.lpSum(
-        df.loc[i, "value_score"] * x[i] + 0.1 * df.loc[i, "value_score"] * b[i]
+        df.loc[i, obj_col] * x[i] + 0.10 * df.loc[i, obj_col] * b[i]
         for i in range(len(df))
     )
 
-    # Budget
-    prob += pulp.lpSum((df.loc[i, "price"]) * (x[i] + b[i]) for i in range(len(df))) <= budget
+    # Budget constraint
+    prob += pulp.lpSum(df.loc[i, "price"] * (x[i] + b[i]) for i in range(len(df))) <= budget
 
     # Position counts
     for pos in positions:
@@ -69,67 +83,68 @@ def build_squad(
         prob += pulp.lpSum(x[i] for i in idx) == starting_need[pos]
         prob += pulp.lpSum(b[i] for i in idx) == bench_need[pos]
 
-    # A player can only be starter OR bench, not both
+    # Each player can only be starter OR bench
     for i in range(len(df)):
         prob += x[i] + b[i] <= 1
 
     # Max players per country
-    countries = df["country"].unique()
-    for country in countries:
+    for country in df["country"].unique():
         idx = df.index[df["country"] == country].tolist()
         prob += pulp.lpSum(x[i] + b[i] for i in idx) <= max_country
 
-    # Lock in required players
+    # Force locked-in players
     for pid in locked_in:
         matches = df.index[df["id"] == pid].tolist()
         if matches:
-            i = matches[0]
-            prob += x[i] + b[i] == 1
+            prob += x[matches[0]] + b[matches[0]] == 1
 
     prob.solve(pulp.PULP_CBC_CMD(msg=0))
 
     if pulp.LpStatus[prob.status] != "Optimal":
         raise RuntimeError(f"Optimizer failed: {pulp.LpStatus[prob.status]}")
 
-    xi_mask = [pulp.value(x[i]) == 1 for i in range(len(df))]
-    bn_mask = [pulp.value(b[i]) == 1 for i in range(len(df))]
+    xi    = df[[pulp.value(x[i]) == 1 for i in range(len(df))]].copy()
+    bench = df[[pulp.value(b[i]) == 1 for i in range(len(df))]].copy()
 
-    xi = df[xi_mask].copy()
-    bench = df[bn_mask].copy()
+    # Captain = most expensive in squad (game default; we confirm best pick)
+    squad = pd.concat([xi, bench])
+    captain      = squad.loc[squad["price"].idxmax(), "name"]
+    vice_captain = squad.loc[squad["price"].nlargest(2).index[-1], "name"]
+
+    # Suggest better captain: highest xpts in starting XI
+    best_xi_xpts = xi.loc[xi[obj_col].idxmax(), "name"] if obj_col in xi.columns else captain
 
     return {
-        "starting_xi": xi.sort_values("position"),
-        "bench": bench.sort_values("position"),
-        "total_cost": float(pulp.value(
-            pulp.lpSum((df.loc[i, "price"]) * (x[i] + b[i]) for i in range(len(df)))
-        )),
-        "total_score": float(pulp.value(prob.objective)),
+        "starting_xi":   xi.sort_values(["position", obj_col], ascending=[True, False]),
+        "bench":         bench.sort_values(["position", obj_col], ascending=[True, False]),
+        "captain":       captain,
+        "vice_captain":  vice_captain,
+        "captain_note":  best_xi_xpts,
+        "total_cost":    squad["price"].sum(),
+        "total_xpts":    xi[obj_col].sum(),
     }
 
 
 def print_squad(result: dict):
-    cols = ["name", "country", "position", "price", "total_pts", "value_score"]
+    xi    = result["starting_xi"]
+    bench = result["bench"]
 
-    def fmt(df):
-        return df[cols].to_string(index=False, float_format=lambda f: f"{f:.2f}")
+    base  = ["name", "country", "position", "price"]
+    extra = [c for c in ["xpts", "value_score", "ownership"] if c in xi.columns]
+    cols  = base + extra
 
-    print("\n=== STARTING XI ===")
-    print(fmt(result["starting_xi"]))
-    print(f"\n=== BENCH ===")
-    print(fmt(result["bench"]))
-    cost = result["starting_xi"]["price"].sum() + result["bench"]["price"].sum()
-    print(f"\nTotal cost : {cost:.1f}")
-    print(f"Budget remaining: {DEFAULT_RULES['budget'] - cost:.1f}")
+    def fmt(df, label):
+        available = [c for c in cols if c in df.columns]
+        print(f"\n{'='*12} {label} {'='*12}")
+        print(df[available].to_string(index=False, float_format=lambda f: f"{f:.2f}"))
 
+    fmt(xi, "STARTING XI")
+    fmt(bench, "BENCH")
 
-if __name__ == "__main__":
-    import sys, os
-    sys.path.insert(0, os.path.dirname(__file__))
-    from data_fetcher import load_or_fetch
-    from fifa_client import FifaFantasyClient
-
-    token = os.getenv("FIFA_SESSION_TOKEN")
-    client = FifaFantasyClient(session_token=token)
-    df = load_or_fetch(client)
-    result = build_squad(df)
-    print_squad(result)
+    print(f"\n  Total cost     : ${result['total_cost']:.1f}m  (budget $100m)")
+    print(f"  Budget left    : ${100 - result['total_cost']:.1f}m")
+    print(f"  Total XI xpts  : {result['total_xpts']:.1f} est. pts")
+    print(f"\n  Captain (auto) : {result['captain']}  (most expensive)")
+    if result['captain_note'] != result['captain']:
+        print(f"  Best xpts pick : {result['captain_note']}  ** consider this as captain instead **")
+    print(f"  Vice-Captain   : {result['vice_captain']}")

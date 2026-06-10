@@ -4,3 +4,6 @@ pulp
 scipy
 tabulate
 python-dotenv
+rapidfuzz
+beautifulsoup4
+lxml
