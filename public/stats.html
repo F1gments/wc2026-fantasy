@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Player Stats | WC2026 Fantasy</title>
+<style>
+  :root {
+    --green: #22c55e; --red: #ef4444; --amber: #f59e0b;
+    --bg: #0f172a; --card: #1e293b; --border: #334155;
+    --text: #f1f5f9; --muted: #94a3b8; --accent: #3b82f6;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: system-ui, sans-serif; }
+
+  nav { background: var(--card); border-bottom: 1px solid var(--border); padding: 0 1.5rem; display: flex; align-items: center; gap: 2rem; height: 52px; }
+  nav .logo { font-weight: 700; font-size: 1.1rem; color: var(--accent); }
+  nav a { color: var(--muted); text-decoration: none; font-size: .9rem; padding: .25rem .5rem; border-radius: 6px; }
+  nav a.active, nav a:hover { color: var(--text); background: var(--border); }
+
+  .controls { padding: 1rem 1.5rem; display: flex; flex-wrap: wrap; gap: .75rem; align-items: center; border-bottom: 1px solid var(--border); }
+  .controls input { background: var(--card); border: 1px solid var(--border); color: var(--text); padding: .4rem .75rem; border-radius: 6px; font-size: .875rem; width: 220px; }
+  .controls input:focus { outline: none; border-color: var(--accent); }
+  .controls select { background: var(--card); border: 1px solid var(--border); color: var(--text); padding: .4rem .75rem; border-radius: 6px; font-size: .875rem; }
+  .controls .count { margin-left: auto; font-size: .8rem; color: var(--muted); }
+  .coverage-badge { font-size: .75rem; padding: .2rem .5rem; border-radius: 4px; background: var(--card); border: 1px solid var(--border); }
+  .coverage-badge.good { border-color: var(--green); color: var(--green); }
+  .coverage-badge.warn { border-color: var(--amber); color: var(--amber); }
+  .coverage-badge.miss { border-color: var(--red); color: var(--red); }
+
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: .82rem; }
+  thead th { background: var(--card); padding: .6rem .75rem; text-align: left; color: var(--muted); font-weight: 600; font-size: .75rem; text-transform: uppercase; letter-spacing: .03em; border-bottom: 2px solid var(--border); white-space: nowrap; cursor: pointer; user-select: none; }
+  thead th:hover { color: var(--text); }
+  thead th.sorted { color: var(--accent); }
+  thead th.sorted::after { content: ' ↓'; }
+  thead th.sorted.asc::after { content: ' ↑'; }
+
+  tbody tr { border-bottom: 1px solid var(--border); transition: background .1s; }
+  tbody tr:hover { background: var(--card); }
+  td { padding: .55rem .75rem; white-space: nowrap; }
+
+  .pos-badge { display: inline-block; font-size: .65rem; font-weight: 700; padding: .15rem .4rem; border-radius: 4px; text-transform: uppercase; }
+  .pos-GK  { background: #854d0e; color: #fef9c3; }
+  .pos-DEF { background: #1e3a5f; color: #bfdbfe; }
+  .pos-MID { background: #14532d; color: #bbf7d0; }
+  .pos-FWD { background: #7f1d1d; color: #fecaca; }
+
+  .has-stats-y { color: var(--green); font-weight: 700; }
+  .has-stats-n { color: var(--muted); }
+
+  .trend-up   { color: var(--green); font-weight: 700; }
+  .trend-down { color: var(--red); font-weight: 700; }
+  .trend-flat { color: var(--muted); }
+
+  .bar { height: 4px; border-radius: 2px; background: var(--border); display: inline-block; vertical-align: middle; }
+  .bar-fill { height: 4px; border-radius: 2px; background: var(--accent); }
+  .val-score { display: inline-flex; align-items: center; gap: .4rem; }
+
+  .footer { padding: .75rem 1.5rem; font-size: .75rem; color: var(--muted); border-top: 1px solid var(--border); }
+</style>
+</head>
+<body>
+<nav>
+  <span class="logo">WC2026 Fantasy</span>
+  <a href="myteam.html">My Team</a>
+  <a href="stats.html" class="active">Player Stats</a>
+</nav>
+
+<div class="controls">
+  <input type="text" id="search" placeholder="Search player or country...">
+  <select id="pos-filter">
+    <option value="">All Positions</option>
+    <option value="GK">GK</option>
+    <option value="DEF">DEF</option>
+    <option value="MID">MID</option>
+    <option value="FWD">FWD</option>
+  </select>
+  <select id="stats-filter">
+    <option value="">All Players</option>
+    <option value="yes">Has Stats</option>
+    <option value="no">No Stats (validation)</option>
+  </select>
+  <select id="country-filter"><option value="">All Countries</option></select>
+  <span id="coverage-badge" class="coverage-badge"></span>
+  <span class="count" id="count"></span>
+</div>
+
+<div class="table-wrap">
+<table id="player-table">
+  <thead>
+    <tr>
+      <th data-key="name">Player</th>
+      <th data-key="country">Nation</th>
+      <th data-key="position">Pos</th>
+      <th data-key="price" class="sorted">Price</th>
+      <th data-key="ownership">Own%</th>
+      <th data-key="xpts">xPts (pre-WC)</th>
+      <th data-key="wc_pts">WC Pts</th>
+      <th data-key="xg_per90">xG/90</th>
+      <th data-key="xa_per90">xA/90</th>
+      <th data-key="save_pct">Save%</th>
+      <th data-key="value_score">Value</th>
+      <th data-key="has_stats">Stats?</th>
+      <th data-key="match_score" title="Fuzzy match confidence (100=perfect)">Match</th>
+    </tr>
+  </thead>
+  <tbody id="table-body"></tbody>
+</table>
+</div>
+<div class="footer" id="footer"></div>
+
+<script>
+let allPlayers = [];
+let sortKey = 'price';
+let sortAsc = false;
+
+function trend(wc_pts, xpts) {
+  if (!wc_pts) return '<span class="trend-flat">—</span>';
+  const r = wc_pts / Math.max(xpts, 0.1);
+  if (r > 1.1) return '<span class="trend-up">▲</span>';
+  if (r < 0.9) return '<span class="trend-down">▼</span>';
+  return '<span class="trend-flat">→</span>';
+}
+
+function valueBar(score, max) {
+  const w = Math.round(Math.min(score / max, 1) * 60);
+  return `<span class="val-score">${score.toFixed(3)} <span class="bar" style="width:60px"><span class="bar-fill" style="width:${w}px"></span></span></span>`;
+}
+
+function render() {
+  const q     = document.getElementById('search').value.toLowerCase();
+  const pos   = document.getElementById('pos-filter').value;
+  const stats = document.getElementById('stats-filter').value;
+  const ctry  = document.getElementById('country-filter').value;
+
+  let rows = allPlayers.filter(p =>
+    (!q    || p.name.toLowerCase().includes(q) || p.country.toLowerCase().includes(q) || (p.fbref_name||'').toLowerCase().includes(q)) &&
+    (!pos   || p.position === pos) &&
+    (!ctry  || p.country === ctry) &&
+    (!stats || (stats === 'yes' ? p.has_stats : !p.has_stats))
+  );
+
+  rows.sort((a, b) => {
+    const av = a[sortKey] ?? 0, bv = b[sortKey] ?? 0;
+    if (typeof av === 'string') return sortAsc ? av.localeCompare(bv) : bv.localeCompare(av);
+    return sortAsc ? av - bv : bv - av;
+  });
+
+  const maxVal = Math.max(...rows.map(r => r.value_score || 0), 0.001);
+
+  document.getElementById('table-body').innerHTML = rows.map(p => `
+    <tr>
+      <td>${p.name}${p.one_to_watch ? ' <span title="One to Watch">👁️</span>' : ''}</td>
+      <td>${p.country}</td>
+      <td><span class="pos-badge pos-${p.position}">${p.position}</span></td>
+      <td>£${p.price}m</td>
+      <td>${p.ownership}%</td>
+      <td>${p.xpts}</td>
+      <td>${p.wc_pts} ${trend(p.wc_pts, p.xpts)}</td>
+      <td>${p.xg_per90 > 0 ? p.xg_per90.toFixed(3) : '<span style="color:var(--border)">—</span>'}</td>
+      <td>${p.xa_per90 > 0 ? p.xa_per90.toFixed(3) : '<span style="color:var(--border)">—</span>'}</td>
+      <td>${p.save_pct > 0 ? p.save_pct + '%' : '<span style="color:var(--border)">—</span>'}</td>
+      <td>${valueBar(p.value_score, maxVal)}</td>
+      <td class="${p.has_stats ? 'has-stats-y' : 'has-stats-n'}">${p.has_stats ? '✓' : '✗'}</td>
+      <td style="color:var(--muted)">${p.match_score > 0 ? p.match_score : '—'}</td>
+    </tr>`).join('');
+
+  document.getElementById('count').textContent = `${rows.length} players`;
+}
+
+function initSortHeaders() {
+  document.querySelectorAll('thead th[data-key]').forEach(th => {
+    th.addEventListener('click', () => {
+      const k = th.dataset.key;
+      if (sortKey === k) sortAsc = !sortAsc; else { sortKey = k; sortAsc = false; }
+      document.querySelectorAll('thead th').forEach(h => h.classList.remove('sorted','asc'));
+      th.classList.add('sorted');
+      if (sortAsc) th.classList.add('asc');
+      render();
+    });
+  });
+}
+
+async function init() {
+  const [players, meta] = await Promise.all([
+    fetch('data/players.json').then(r => r.json()),
+    fetch('data/meta.json').then(r => r.json()),
+  ]);
+
+  allPlayers = players;
+
+  // Populate country dropdown
+  const countries = [...new Set(players.map(p => p.country))].sort();
+  const cSel = document.getElementById('country-filter');
+  countries.forEach(c => { const o = document.createElement('option'); o.value = c; o.textContent = c; cSel.appendChild(o); });
+
+  // Coverage badge
+  const badge = document.getElementById('coverage-badge');
+  badge.textContent = `${meta.coverage_pct}% stats coverage`;
+  badge.className = 'coverage-badge ' + (meta.coverage_pct >= 70 ? 'good' : meta.coverage_pct >= 40 ? 'warn' : 'miss');
+
+  document.getElementById('footer').textContent = `${meta.total_players} players · ${meta.matched_stats} with external stats · Updated ${meta.last_updated}`;
+
+  ['search','pos-filter','stats-filter','country-filter'].forEach(id =>
+    document.getElementById(id).addEventListener('input', render)
+  );
+  initSortHeaders();
+  render();
+}
+
+init().catch(e => {
+  document.getElementById('table-body').innerHTML = `<tr><td colspan="13" style="padding:1rem;color:var(--red)">Error: ${e.message}. Run 'python src/main.py sync' first.</td></tr>`;
+});
+</script>
+</body>
+</html>

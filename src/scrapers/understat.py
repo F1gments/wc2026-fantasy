@@ -3,7 +3,6 @@ Understat scraper — xG, xA, goals, assists, minutes for Big 5 leagues.
 Uses the `understatapi` package which handles the site's changing structure.
 """
 
-import asyncio
 import json
 import pandas as pd
 from pathlib import Path
@@ -12,18 +11,12 @@ CACHE_DIR = Path(__file__).parent.parent.parent / "data" / "cache"
 
 # understatapi league names  →  season start year
 LEAGUES = {
-    "EPL":        "2024",
-    "La liga":    "2024",
-    "Bundesliga": "2024",
-    "Serie A":    "2024",
-    "Ligue 1":    "2024",
+    "EPL":        "2025",
+    "La_Liga":    "2025",
+    "Bundesliga": "2025",
+    "Serie_A":    "2025",
+    "Ligue_1":    "2025",
 }
-
-
-async def _fetch_league_async(league: str, season: str) -> list[dict]:
-    from understatapi import UnderstatClient
-    async with UnderstatClient() as client:
-        return await client.league(league_title=league).get_player_stats(season=season)
 
 
 def _fetch_league(league_key: str, season: str) -> list[dict]:
@@ -34,7 +27,9 @@ def _fetch_league(league_key: str, season: str) -> list[dict]:
 
     print(f"  [fetch] understat/{league_key} {season}")
     try:
-        players = asyncio.run(_fetch_league_async(league_key, season))
+        from understatapi import UnderstatClient
+        with UnderstatClient() as client:
+            players = client.league(league=league_key).get_player_data(season=season)
     except Exception as e:
         print(f"  WARNING: understat/{league_key} failed — {e}")
         return []

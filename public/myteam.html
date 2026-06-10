@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>My Team | WC2026 Fantasy</title>
+<style>
+  :root {
+    --green: #22c55e; --red: #ef4444; --amber: #f59e0b;
+    --bg: #0f172a; --card: #1e293b; --border: #334155;
+    --text: #f1f5f9; --muted: #94a3b8; --accent: #3b82f6;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: system-ui, sans-serif; min-height: 100vh; }
+
+  /* NAV */
+  nav { background: var(--card); border-bottom: 1px solid var(--border); padding: 0 1.5rem; display: flex; align-items: center; gap: 2rem; height: 52px; }
+  nav .logo { font-weight: 700; font-size: 1.1rem; color: var(--accent); }
+  nav a { color: var(--muted); text-decoration: none; font-size: .9rem; padding: .25rem .5rem; border-radius: 6px; }
+  nav a.active, nav a:hover { color: var(--text); background: var(--border); }
+
+  /* HEADER */
+  .header { padding: 1.5rem; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; }
+  .header h1 { font-size: 1.4rem; }
+  .header .meta { font-size: .8rem; color: var(--muted); }
+  .budget-bar { display: flex; gap: 1.5rem; }
+  .budget-item { text-align: center; }
+  .budget-item .val { font-size: 1.3rem; font-weight: 700; color: var(--accent); }
+  .budget-item .lbl { font-size: .75rem; color: var(--muted); }
+
+  /* CAPTAIN BANNER */
+  .captain-banner { margin: 1rem 1.5rem; background: linear-gradient(135deg, #1d4ed8, #7c3aed); border-radius: 10px; padding: 1rem 1.25rem; display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; }
+  .captain-banner .cap-badge { background: rgba(255,255,255,.2); border-radius: 6px; padding: .2rem .6rem; font-size: .75rem; font-weight: 700; }
+  .captain-banner .cap-name { font-size: 1.1rem; font-weight: 700; }
+  .captain-banner .cap-note { font-size: .8rem; color: rgba(255,255,255,.7); }
+
+  /* SQUAD GRID */
+  .section-title { padding: .75rem 1.5rem .5rem; font-size: .8rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+  .squad-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(165px, 1fr)); gap: .75rem; padding: 0 1.5rem 1rem; }
+
+  .player-card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: .85rem; position: relative; transition: border-color .15s; }
+  .player-card:hover { border-color: var(--accent); }
+  .player-card.captain { border-color: gold; }
+
+  .player-card .pos-badge { display: inline-block; font-size: .65rem; font-weight: 700; padding: .15rem .4rem; border-radius: 4px; margin-bottom: .4rem; text-transform: uppercase; }
+  .pos-GK  { background: #854d0e; color: #fef9c3; }
+  .pos-DEF { background: #1e3a5f; color: #bfdbfe; }
+  .pos-MID { background: #14532d; color: #bbf7d0; }
+  .pos-FWD { background: #7f1d1d; color: #fecaca; }
+
+  .player-card .player-img { width: 56px; height: 56px; border-radius: 50%; object-fit: cover; background: var(--border); display: block; margin: 0 auto .5rem; }
+  .player-card .player-img.placeholder { display: flex; align-items: center; justify-content: center; font-size: 1.4rem; }
+
+  .player-card .p-name { font-size: .9rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: center; }
+  .player-card .p-country { font-size: .75rem; color: var(--muted); text-align: center; margin-bottom: .5rem; }
+
+  .player-card .stats-row { display: flex; justify-content: space-between; font-size: .75rem; color: var(--muted); border-top: 1px solid var(--border); padding-top: .4rem; margin-top: .4rem; }
+  .player-card .stats-row span { text-align: center; }
+  .player-card .stats-row .lbl { display: block; font-size: .65rem; color: #64748b; }
+  .player-card .stats-row .val { display: block; font-weight: 600; color: var(--text); }
+
+  .trend-up   { color: var(--green); }
+  .trend-down { color: var(--red); }
+  .trend-flat { color: var(--muted); }
+  .captain-crown { position: absolute; top: .5rem; right: .5rem; font-size: .9rem; }
+
+  /* TRANSFERS */
+  .transfers { margin: 0 1.5rem 1.5rem; background: var(--card); border: 1px solid var(--border); border-radius: 10px; }
+  .transfers h3 { padding: .85rem 1rem .5rem; font-size: .95rem; border-bottom: 1px solid var(--border); }
+  .transfer-item { display: flex; align-items: center; gap: .75rem; padding: .7rem 1rem; border-bottom: 1px solid var(--border); font-size: .85rem; }
+  .transfer-item:last-child { border-bottom: none; }
+  .transfer-item .out { color: var(--red); }
+  .transfer-item .inn { color: var(--green); }
+  .transfer-item .arrow { color: var(--muted); }
+  .transfer-item .gain { margin-left: auto; font-weight: 700; color: var(--green); }
+  .transfer-item .no-change { margin-left: auto; color: var(--muted); font-size: .8rem; }
+
+  .last-updated { text-align: center; padding: 1rem; font-size: .75rem; color: var(--muted); }
+</style>
+</head>
+<body>
+<nav>
+  <span class="logo">WC2026 Fantasy</span>
+  <a href="myteam.html" class="active">My Team</a>
+  <a href="stats.html">Player Stats</a>
+</nav>
+
+<div class="header">
+  <div>
+    <h1>My Squad</h1>
+    <div class="meta" id="meta-info">Loading...</div>
+  </div>
+  <div class="budget-bar">
+    <div class="budget-item"><div class="val" id="cost">—</div><div class="lbl">Spent</div></div>
+    <div class="budget-item"><div class="val" id="budget-left">—</div><div class="lbl">Remaining</div></div>
+    <div class="budget-item"><div class="val" id="total-xpts">—</div><div class="lbl">Est. Pts (XI)</div></div>
+  </div>
+</div>
+
+<div id="captain-banner" class="captain-banner" style="display:none">
+  <span class="cap-badge">C</span>
+  <span class="cap-name" id="cap-name"></span>
+  <span class="cap-note">Captain — doubles points each round</span>
+</div>
+
+<div class="section-title">Starting XI</div>
+<div class="squad-grid" id="xi-grid"></div>
+
+<div class="section-title">Bench</div>
+<div class="squad-grid" id="bench-grid"></div>
+
+<div class="transfers">
+  <h3>Transfer Suggestions for Next Round</h3>
+  <div id="transfers-list"><div style="padding:.7rem 1rem;color:var(--muted);font-size:.85rem">Loading suggestions...</div></div>
+</div>
+
+<div class="last-updated" id="last-updated"></div>
+
+<script>
+const POS_EMOJI = { GK: '🧤', DEF: '🛡️', MID: '⚡', FWD: '⚽' };
+
+function trendArrow(wc_pts, xpts) {
+  if (!wc_pts) return '<span class="trend-flat">—</span>';
+  const pct = (wc_pts / Math.max(xpts, 1)) * 100;
+  if (pct > 110) return '<span class="trend-up">▲</span>';
+  if (pct < 90)  return '<span class="trend-down">▼</span>';
+  return '<span class="trend-flat">→</span>';
+}
+
+function playerCard(p, isCapt) {
+  const img = p.img_url
+    ? `<img class="player-img" src="${p.img_url}" alt="${p.name}" onerror="this.outerHTML='<div class=\\'player-img placeholder\\'>${POS_EMOJI[p.position]||'👤'}</div>'">`
+    : `<div class="player-img placeholder">${POS_EMOJI[p.position]||'👤'}</div>`;
+  return `
+  <div class="player-card${isCapt ? ' captain' : ''}">
+    ${isCapt ? '<span class="captain-crown">👑</span>' : ''}
+    <span class="pos-badge pos-${p.position}">${p.position}</span>
+    ${img}
+    <div class="p-name" title="${p.name}">${p.name}</div>
+    <div class="p-country">${p.country} · £${p.price}m</div>
+    <div class="stats-row">
+      <span><span class="lbl">xPts</span><span class="val">${p.xpts}</span></span>
+      <span><span class="lbl">WC Pts</span><span class="val">${p.wc_pts}</span></span>
+      <span><span class="lbl">Own%</span><span class="val">${p.ownership}%</span></span>
+      <span><span class="lbl">Trend</span><span class="val">${trendArrow(p.wc_pts, p.xpts)}</span></span>
+    </div>
+  </div>`;
+}
+
+function renderGrid(players, captain, gridId) {
+  document.getElementById(gridId).innerHTML = players.map(p => playerCard(p, p.name === captain)).join('');
+}
+
+async function loadSquad() {
+  const [squad, meta] = await Promise.all([
+    fetch('data/squad.json').then(r => r.json()),
+    fetch('data/meta.json').then(r => r.json()),
+  ]);
+
+  document.getElementById('cost').textContent = `$${squad.total_cost}m`;
+  document.getElementById('budget-left').textContent = `$${squad.budget_left}m`;
+  document.getElementById('total-xpts').textContent = squad.total_xpts;
+  document.getElementById('meta-info').textContent = `Updated: ${meta.last_updated} · ${meta.total_players} players · ${meta.coverage_pct}% with stats`;
+  document.getElementById('last-updated').textContent = `Data last refreshed: ${meta.last_updated}. Run 'python src/main.py sync' to update.`;
+
+  const banner = document.getElementById('captain-banner');
+  banner.style.display = 'flex';
+  document.getElementById('cap-name').textContent = squad.captain;
+
+  renderGrid(squad.starting_xi, squad.captain, 'xi-grid');
+  renderGrid(squad.bench, squad.captain, 'bench-grid');
+
+  // Simple transfer suggestion: cheapest starter vs best value available
+  // (full logic runs server-side; here we just show the pre-computed suggestions)
+  const tList = document.getElementById('transfers-list');
+  if (squad.suggestions && squad.suggestions.length) {
+    tList.innerHTML = squad.suggestions.map(s => `
+      <div class="transfer-item">
+        <span class="out">OUT: ${s.out_name} (${s.out_pos}, £${s.out_price}m)</span>
+        <span class="arrow">→</span>
+        <span class="inn">IN: ${s.in_name} (${s.in_pos}, £${s.in_price}m)</span>
+        <span class="gain">+${s.xpts_gain} est. pts</span>
+      </div>`).join('');
+  } else {
+    tList.innerHTML = '<div style="padding:.7rem 1rem;color:var(--muted);font-size:.85rem">No transfers recommended — squad is optimal for current data. Re-run sync after gameweek 1 for live recommendations.</div>';
+  }
+}
+
+loadSquad().catch(e => {
+  document.getElementById('xi-grid').innerHTML = `<div style="padding:1rem;color:var(--red)">Error loading data: ${e.message}. Run 'python src/main.py sync' first.</div>`;
+});
+</script>
+</body>
+</html>
