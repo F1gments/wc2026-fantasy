@@ -125,6 +125,83 @@ def build_squad(
     }
 
 
+STRATEGIES = [
+    {
+        "id":          "moneyball",
+        "name":        "Moneyball",
+        "description": "Pure statistical value — highest expected points per £m spent. Trusts the model completely.",
+        "score_fn":    lambda df: df["xpts"] / df["price"].replace(0, 1),
+    },
+    {
+        "id":          "attack_heavy",
+        "name":        "Attack Heavy",
+        "description": "Premium forwards and midfielders first. Sacrifices defensive depth for high-ceiling attacking picks with goal and assist upside.",
+        "score_fn":    lambda df: df.apply(
+            lambda r: r["xpts"] * (1.5 if r["position"] in ("FWD", "MID") else 0.8) / max(r["price"], 1),
+            axis=1
+        ),
+    },
+    {
+        "id":          "defensive_wall",
+        "name":        "Defensive Wall",
+        "description": "Maximise clean sheet returns. DEFs and GKs from the best defensive nations weighted heavily. Less exciting but consistent points floor.",
+        "score_fn":    lambda df: df.apply(
+            lambda r: r["xpts"] * (1.6 if r["position"] in ("GK", "DEF") else 0.85) / max(r["price"], 1),
+            axis=1
+        ),
+    },
+    {
+        "id":          "differentials",
+        "name":        "Differentials",
+        "description": "Low-ownership, high-ceiling picks. If these players perform you score the +2 scouting bonus AND gain on your rivals. High risk, high reward.",
+        "score_fn":    lambda df: df.apply(
+            lambda r: r["xpts"] * max(1 - r.get("ownership", 0) / 100, 0.05) / max(r["price"], 1),
+            axis=1
+        ),
+    },
+    {
+        "id":          "deep_run",
+        "name":        "Deep Run",
+        "description": "Players from teams statistically most likely to reach the semi-finals and final. More games = more points. Backs the favourites to go all the way.",
+        "score_fn":    lambda df: df.apply(
+            lambda r: r["xpts"] * (1.0 + r.get("ownership", 0) / 200) / max(r["price"], 1),
+            axis=1
+        ),
+    },
+]
+
+
+def build_top_n_squads(df: pd.DataFrame, n: int = 5) -> list[dict]:
+    """
+    Build N strategy-labelled squads.
+    Each uses a different objective weighting so player overlap is intentional
+    where a player is genuinely strong across multiple dimensions.
+    """
+    results = []
+    for strategy in STRATEGIES[:n]:
+        print(f"  Building '{strategy['name']}' squad...")
+        # Apply the strategy's scoring function to a copy of the data
+        df_s = df.copy()
+        df_s["_strat_score"] = strategy["score_fn"](df_s)
+
+        # Temporarily replace value_score with strategy score for the optimizer
+        df_s["value_score"] = df_s["_strat_score"]
+        # Keep xpts as-is so captain logic still uses real expected points
+        if "xpts" not in df_s.columns:
+            df_s["xpts"] = df_s["_strat_score"] * df_s["price"]
+
+        try:
+            result = build_squad(df_s)
+            result["strategy_id"]          = strategy["id"]
+            result["strategy_name"]        = strategy["name"]
+            result["strategy_description"] = strategy["description"]
+            results.append(result)
+        except Exception as e:
+            print(f"    WARNING: '{strategy['name']}' failed — {e}")
+
+    return results
+
+
 def print_squad(result: dict):
     xi    = result["starting_xi"]
     bench = result["bench"]

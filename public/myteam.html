@@ -6,76 +6,84 @@
 <title>My Team | WC2026 Fantasy</title>
 <style>
   :root {
-    --green: #22c55e; --red: #ef4444; --amber: #f59e0b;
-    --bg: #0f172a; --card: #1e293b; --border: #334155;
-    --text: #f1f5f9; --muted: #94a3b8; --accent: #3b82f6;
+    --green:#22c55e;--red:#ef4444;--amber:#f59e0b;
+    --bg:#0f172a;--card:#1e293b;--border:#334155;
+    --text:#f1f5f9;--muted:#94a3b8;--accent:#3b82f6;
+    --gold:#f59e0b;
   }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { background: var(--bg); color: var(--text); font-family: system-ui, sans-serif; min-height: 100vh; }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font-family:system-ui,sans-serif;min-height:100vh;}
 
-  /* NAV */
-  nav { background: var(--card); border-bottom: 1px solid var(--border); padding: 0 1.5rem; display: flex; align-items: center; gap: 2rem; height: 52px; }
-  nav .logo { font-weight: 700; font-size: 1.1rem; color: var(--accent); }
-  nav a { color: var(--muted); text-decoration: none; font-size: .9rem; padding: .25rem .5rem; border-radius: 6px; }
-  nav a.active, nav a:hover { color: var(--text); background: var(--border); }
+  nav{background:var(--card);border-bottom:1px solid var(--border);padding:0 1.5rem;display:flex;align-items:center;gap:2rem;height:52px;}
+  nav .logo{font-weight:700;font-size:1.1rem;color:var(--accent);}
+  nav a{color:var(--muted);text-decoration:none;font-size:.9rem;padding:.25rem .5rem;border-radius:6px;}
+  nav a.active,nav a:hover{color:var(--text);background:var(--border);}
 
-  /* HEADER */
-  .header { padding: 1.5rem; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; }
-  .header h1 { font-size: 1.4rem; }
-  .header .meta { font-size: .8rem; color: var(--muted); }
-  .budget-bar { display: flex; gap: 1.5rem; }
-  .budget-item { text-align: center; }
-  .budget-item .val { font-size: 1.3rem; font-weight: 700; color: var(--accent); }
-  .budget-item .lbl { font-size: .75rem; color: var(--muted); }
+  /* STRATEGY TABS */
+  .tab-bar{display:flex;gap:0;border-bottom:2px solid var(--border);overflow-x:auto;background:var(--card);}
+  .tab{padding:.65rem 1.2rem;cursor:pointer;font-size:.85rem;color:var(--muted);white-space:nowrap;border-bottom:2px solid transparent;margin-bottom:-2px;transition:color .15s,border-color .15s;}
+  .tab:hover{color:var(--text);}
+  .tab.active{color:var(--text);border-bottom-color:var(--accent);font-weight:600;}
+  .tab .tab-num{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:var(--border);font-size:.7rem;margin-right:.4rem;}
+  .tab.active .tab-num{background:var(--accent);color:#fff;}
+
+  /* STRATEGY BANNER */
+  .strategy-banner{margin:1rem 1.5rem;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:1rem 1.25rem;display:flex;gap:1rem;align-items:flex-start;flex-wrap:wrap;}
+  .strategy-banner .s-name{font-size:1rem;font-weight:700;}
+  .strategy-banner .s-desc{font-size:.82rem;color:var(--muted);line-height:1.5;flex:1;min-width:200px;}
+  .budget-bar{display:flex;gap:1.5rem;margin-left:auto;}
+  .budget-item{text-align:center;}
+  .budget-item .val{font-size:1.2rem;font-weight:700;color:var(--accent);}
+  .budget-item .lbl{font-size:.7rem;color:var(--muted);}
 
   /* CAPTAIN BANNER */
-  .captain-banner { margin: 1rem 1.5rem; background: linear-gradient(135deg, #1d4ed8, #7c3aed); border-radius: 10px; padding: 1rem 1.25rem; display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; }
-  .captain-banner .cap-badge { background: rgba(255,255,255,.2); border-radius: 6px; padding: .2rem .6rem; font-size: .75rem; font-weight: 700; }
-  .captain-banner .cap-name { font-size: 1.1rem; font-weight: 700; }
-  .captain-banner .cap-note { font-size: .8rem; color: rgba(255,255,255,.7); }
+  .captain-banner{margin:0 1.5rem .75rem;background:linear-gradient(135deg,#1d4ed8,#7c3aed);border-radius:10px;padding:.75rem 1.25rem;display:flex;gap:.75rem;align-items:center;flex-wrap:wrap;}
+  .cap-badge{background:rgba(255,255,255,.2);border-radius:6px;padding:.15rem .5rem;font-size:.75rem;font-weight:700;}
+  .cap-name{font-size:1rem;font-weight:700;}
+  .cap-note{font-size:.78rem;color:rgba(255,255,255,.7);}
 
   /* SQUAD GRID */
-  .section-title { padding: .75rem 1.5rem .5rem; font-size: .8rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
-  .squad-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(165px, 1fr)); gap: .75rem; padding: 0 1.5rem 1rem; }
+  .section-title{padding:.6rem 1.5rem .4rem;font-size:.75rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;}
+  .squad-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(155px,1fr));gap:.65rem;padding:0 1.5rem 1rem;}
 
-  .player-card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: .85rem; position: relative; transition: border-color .15s; }
-  .player-card:hover { border-color: var(--accent); }
-  .player-card.captain { border-color: gold; }
+  .player-card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:.75rem;position:relative;transition:border-color .15s;}
+  .player-card:hover{border-color:var(--accent);}
+  .player-card.captain{border-color:var(--gold);}
 
-  .player-card .pos-badge { display: inline-block; font-size: .65rem; font-weight: 700; padding: .15rem .4rem; border-radius: 4px; margin-bottom: .4rem; text-transform: uppercase; }
-  .pos-GK  { background: #854d0e; color: #fef9c3; }
-  .pos-DEF { background: #1e3a5f; color: #bfdbfe; }
-  .pos-MID { background: #14532d; color: #bbf7d0; }
-  .pos-FWD { background: #7f1d1d; color: #fecaca; }
+  .pos-badge{display:inline-block;font-size:.6rem;font-weight:700;padding:.12rem .35rem;border-radius:4px;margin-bottom:.35rem;text-transform:uppercase;}
+  .pos-GK{background:#854d0e;color:#fef9c3;}
+  .pos-DEF{background:#1e3a5f;color:#bfdbfe;}
+  .pos-MID{background:#14532d;color:#bbf7d0;}
+  .pos-FWD{background:#7f1d1d;color:#fecaca;}
 
-  .player-card .player-img { width: 56px; height: 56px; border-radius: 50%; object-fit: cover; background: var(--border); display: block; margin: 0 auto .5rem; }
-  .player-card .player-img.placeholder { display: flex; align-items: center; justify-content: center; font-size: 1.4rem; }
+  .player-img{width:52px;height:52px;border-radius:50%;object-fit:cover;background:var(--border);display:block;margin:0 auto .45rem;}
+  .player-img-placeholder{width:52px;height:52px;border-radius:50%;background:var(--border);display:flex;align-items:center;justify-content:center;font-size:1.3rem;margin:0 auto .45rem;}
 
-  .player-card .p-name { font-size: .9rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: center; }
-  .player-card .p-country { font-size: .75rem; color: var(--muted); text-align: center; margin-bottom: .5rem; }
+  .p-name{font-size:.85rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:center;}
+  .p-country{font-size:.72rem;color:var(--muted);text-align:center;margin-bottom:.4rem;}
+  .stats-row{display:flex;justify-content:space-between;font-size:.7rem;color:var(--muted);border-top:1px solid var(--border);padding-top:.35rem;margin-top:.35rem;}
+  .stats-row span{text-align:center;}
+  .stats-row .lbl{display:block;font-size:.6rem;color:#64748b;}
+  .stats-row .val{display:block;font-weight:600;color:var(--text);}
+  .captain-crown{position:absolute;top:.4rem;right:.4rem;font-size:.85rem;}
 
-  .player-card .stats-row { display: flex; justify-content: space-between; font-size: .75rem; color: var(--muted); border-top: 1px solid var(--border); padding-top: .4rem; margin-top: .4rem; }
-  .player-card .stats-row span { text-align: center; }
-  .player-card .stats-row .lbl { display: block; font-size: .65rem; color: #64748b; }
-  .player-card .stats-row .val { display: block; font-weight: 600; color: var(--text); }
+  .trend-up{color:var(--green);}
+  .trend-down{color:var(--red);}
+  .trend-flat{color:var(--muted);}
 
-  .trend-up   { color: var(--green); }
-  .trend-down { color: var(--red); }
-  .trend-flat { color: var(--muted); }
-  .captain-crown { position: absolute; top: .5rem; right: .5rem; font-size: .9rem; }
+  /* OVERLAP INDICATOR */
+  .overlap-badge{position:absolute;top:.4rem;left:.4rem;font-size:.6rem;background:var(--accent);color:#fff;border-radius:4px;padding:.1rem .3rem;font-weight:700;}
 
-  /* TRANSFERS */
-  .transfers { margin: 0 1.5rem 1.5rem; background: var(--card); border: 1px solid var(--border); border-radius: 10px; }
-  .transfers h3 { padding: .85rem 1rem .5rem; font-size: .95rem; border-bottom: 1px solid var(--border); }
-  .transfer-item { display: flex; align-items: center; gap: .75rem; padding: .7rem 1rem; border-bottom: 1px solid var(--border); font-size: .85rem; }
-  .transfer-item:last-child { border-bottom: none; }
-  .transfer-item .out { color: var(--red); }
-  .transfer-item .inn { color: var(--green); }
-  .transfer-item .arrow { color: var(--muted); }
-  .transfer-item .gain { margin-left: auto; font-weight: 700; color: var(--green); }
-  .transfer-item .no-change { margin-left: auto; color: var(--muted); font-size: .8rem; }
+  /* COMPARISON TABLE */
+  .compare-section{margin:0 1.5rem 1.5rem;background:var(--card);border:1px solid var(--border);border-radius:10px;overflow:hidden;}
+  .compare-section h3{padding:.75rem 1rem .5rem;font-size:.9rem;border-bottom:1px solid var(--border);}
+  .compare-table{width:100%;border-collapse:collapse;font-size:.82rem;}
+  .compare-table th{background:var(--bg);padding:.5rem .75rem;text-align:left;color:var(--muted);font-size:.72rem;text-transform:uppercase;letter-spacing:.03em;}
+  .compare-table td{padding:.5rem .75rem;border-bottom:1px solid var(--border);}
+  .compare-table tr:last-child td{border-bottom:none;}
+  .compare-table .active-row{background:rgba(59,130,246,.08);}
 
-  .last-updated { text-align: center; padding: 1rem; font-size: .75rem; color: var(--muted); }
+  .last-updated{text-align:center;padding:.75rem;font-size:.72rem;color:var(--muted);}
 </style>
 </head>
 <body>
@@ -85,110 +93,151 @@
   <a href="stats.html">Player Stats</a>
 </nav>
 
-<div class="header">
-  <div>
-    <h1>My Squad</h1>
-    <div class="meta" id="meta-info">Loading...</div>
-  </div>
-  <div class="budget-bar">
-    <div class="budget-item"><div class="val" id="cost">—</div><div class="lbl">Spent</div></div>
-    <div class="budget-item"><div class="val" id="budget-left">—</div><div class="lbl">Remaining</div></div>
-    <div class="budget-item"><div class="val" id="total-xpts">—</div><div class="lbl">Est. Pts (XI)</div></div>
-  </div>
-</div>
+<div class="tab-bar" id="tab-bar"></div>
 
-<div id="captain-banner" class="captain-banner" style="display:none">
-  <span class="cap-badge">C</span>
-  <span class="cap-name" id="cap-name"></span>
-  <span class="cap-note">Captain — doubles points each round</span>
-</div>
+<div id="squad-view"></div>
 
-<div class="section-title">Starting XI</div>
-<div class="squad-grid" id="xi-grid"></div>
-
-<div class="section-title">Bench</div>
-<div class="squad-grid" id="bench-grid"></div>
-
-<div class="transfers">
-  <h3>Transfer Suggestions for Next Round</h3>
-  <div id="transfers-list"><div style="padding:.7rem 1rem;color:var(--muted);font-size:.85rem">Loading suggestions...</div></div>
+<div class="compare-section">
+  <h3>Strategy Comparison</h3>
+  <table class="compare-table">
+    <thead><tr>
+      <th>#</th><th>Strategy</th><th>Est. XI Pts</th><th>Cost</th><th>Budget Left</th><th>Captain</th>
+    </tr></thead>
+    <tbody id="compare-body"></tbody>
+  </table>
 </div>
 
 <div class="last-updated" id="last-updated"></div>
 
 <script>
-const POS_EMOJI = { GK: '🧤', DEF: '🛡️', MID: '⚡', FWD: '⚽' };
+const POS_EMOJI = {GK:'🧤',DEF:'🛡️',MID:'⚡',FWD:'⚽'};
 
-function trendArrow(wc_pts, xpts) {
+let allSquads = [];
+let activeIdx = 0;
+
+function trend(wc_pts, xpts) {
   if (!wc_pts) return '<span class="trend-flat">—</span>';
-  const pct = (wc_pts / Math.max(xpts, 1)) * 100;
-  if (pct > 110) return '<span class="trend-up">▲</span>';
-  if (pct < 90)  return '<span class="trend-down">▼</span>';
+  const r = wc_pts / Math.max(xpts, 0.1);
+  if (r > 1.1) return '<span class="trend-up">▲</span>';
+  if (r < 0.9) return '<span class="trend-down">▼</span>';
   return '<span class="trend-flat">→</span>';
 }
 
-function playerCard(p, isCapt) {
+// Players that appear in ALL squads = "no brainers"
+function getNobrainers(squads) {
+  if (!squads.length) return new Set();
+  const nameSets = squads.map(s => new Set([...s.starting_xi, ...s.bench].map(p => p.name)));
+  return nameSets.reduce((a, b) => new Set([...a].filter(x => b.has(x))));
+}
+
+// Players that appear in the current squad and at least one other
+function getOverlapNames(squad, allSquads) {
+  const others = allSquads.filter((_, i) => i !== activeIdx);
+  const otherNames = new Set(others.flatMap(s => [...s.starting_xi, ...s.bench].map(p => p.name)));
+  return new Set([...squad.starting_xi, ...squad.bench].map(p => p.name).filter(n => otherNames.has(n)));
+}
+
+function playerCard(p, isCapt, overlapNames) {
+  const inOthers = overlapNames.has(p.name);
   const img = p.img_url
-    ? `<img class="player-img" src="${p.img_url}" alt="${p.name}" onerror="this.outerHTML='<div class=\\'player-img placeholder\\'>${POS_EMOJI[p.position]||'👤'}</div>'">`
-    : `<div class="player-img placeholder">${POS_EMOJI[p.position]||'👤'}</div>`;
+    ? `<img class="player-img" src="${p.img_url}" alt="${p.name}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`
+    : '';
+  const placeholder = `<div class="player-img-placeholder" style="${p.img_url ? 'display:none' : ''}">${POS_EMOJI[p.position]||'👤'}</div>`;
   return `
-  <div class="player-card${isCapt ? ' captain' : ''}">
+  <div class="player-card${isCapt?' captain':''}">
     ${isCapt ? '<span class="captain-crown">👑</span>' : ''}
+    ${inOthers ? '<span class="overlap-badge" title="Appears in multiple strategies">✓</span>' : ''}
     <span class="pos-badge pos-${p.position}">${p.position}</span>
-    ${img}
+    ${img}${placeholder}
     <div class="p-name" title="${p.name}">${p.name}</div>
     <div class="p-country">${p.country} · £${p.price}m</div>
     <div class="stats-row">
       <span><span class="lbl">xPts</span><span class="val">${p.xpts}</span></span>
       <span><span class="lbl">WC Pts</span><span class="val">${p.wc_pts}</span></span>
       <span><span class="lbl">Own%</span><span class="val">${p.ownership}%</span></span>
-      <span><span class="lbl">Trend</span><span class="val">${trendArrow(p.wc_pts, p.xpts)}</span></span>
+      <span><span class="lbl">Trend</span><span class="val">${trend(p.wc_pts, p.xpts)}</span></span>
     </div>
   </div>`;
 }
 
-function renderGrid(players, captain, gridId) {
-  document.getElementById(gridId).innerHTML = players.map(p => playerCard(p, p.name === captain)).join('');
+function renderSquad(idx) {
+  activeIdx = idx;
+  const squad = allSquads[idx];
+  const overlapNames = getOverlapNames(squad, allSquads);
+
+  const view = document.getElementById('squad-view');
+  view.innerHTML = `
+    <div class="strategy-banner">
+      <div>
+        <div class="s-name">${squad.strategy_name}</div>
+        <div class="s-desc">${squad.strategy_description}</div>
+      </div>
+      <div class="budget-bar">
+        <div class="budget-item"><div class="val">$${squad.total_cost}m</div><div class="lbl">Spent</div></div>
+        <div class="budget-item"><div class="val">$${squad.budget_left}m</div><div class="lbl">Remaining</div></div>
+        <div class="budget-item"><div class="val">${squad.total_xpts}</div><div class="lbl">Est. XI Pts</div></div>
+      </div>
+    </div>
+    <div class="captain-banner">
+      <span class="cap-badge">C</span>
+      <span class="cap-name">${squad.captain}</span>
+      <span class="cap-note">Captain · VC: ${squad.vice_captain}</span>
+    </div>
+    <div class="section-title">Starting XI <span style="color:var(--accent);font-size:.7rem;margin-left:.5rem">✓ = appears in multiple strategies</span></div>
+    <div class="squad-grid">${squad.starting_xi.map(p => playerCard(p, p.name===squad.captain, overlapNames)).join('')}</div>
+    <div class="section-title">Bench</div>
+    <div class="squad-grid">${squad.bench.map(p => playerCard(p, false, overlapNames)).join('')}</div>
+  `;
+
+  // Update active tab
+  document.querySelectorAll('.tab').forEach((t,i) => t.classList.toggle('active', i===idx));
+  // Update comparison table highlight
+  document.querySelectorAll('.compare-table tr[data-idx]').forEach(tr =>
+    tr.classList.toggle('active-row', parseInt(tr.dataset.idx) === idx)
+  );
 }
 
-async function loadSquad() {
-  const [squad, meta] = await Promise.all([
-    fetch('data/squad.json').then(r => r.json()),
-    fetch('data/meta.json').then(r => r.json()),
+function buildTabs(squads) {
+  const bar = document.getElementById('tab-bar');
+  bar.innerHTML = squads.map((s,i) => `
+    <div class="tab${i===0?' active':''}" onclick="renderSquad(${i})">
+      <span class="tab-num">${i+1}</span>${s.strategy_name}
+    </div>`).join('');
+}
+
+function buildCompareTable(squads) {
+  document.getElementById('compare-body').innerHTML = squads.map((s,i) => `
+    <tr data-idx="${i}" class="${i===0?'active-row':''}" style="cursor:pointer" onclick="renderSquad(${i})">
+      <td style="font-weight:700;color:var(--accent)">${i+1}</td>
+      <td style="font-weight:600">${s.strategy_name}</td>
+      <td style="font-weight:700;color:var(--green)">${s.total_xpts}</td>
+      <td>$${s.total_cost}m</td>
+      <td style="color:${parseFloat(s.budget_left)>5?'var(--green)':'var(--muted)'}">$${s.budget_left}m</td>
+      <td style="color:var(--muted)">${s.captain}</td>
+    </tr>`).join('');
+}
+
+async function init() {
+  const [squads, meta] = await Promise.all([
+    fetch('data/squads.json').then(r=>r.json()).catch(()=>null),
+    fetch('data/meta.json').then(r=>r.json()).catch(()=>({last_updated:'unknown'})),
   ]);
 
-  document.getElementById('cost').textContent = `$${squad.total_cost}m`;
-  document.getElementById('budget-left').textContent = `$${squad.budget_left}m`;
-  document.getElementById('total-xpts').textContent = squad.total_xpts;
-  document.getElementById('meta-info').textContent = `Updated: ${meta.last_updated} · ${meta.total_players} players · ${meta.coverage_pct}% with stats`;
-  document.getElementById('last-updated').textContent = `Data last refreshed: ${meta.last_updated}. Run 'python src/main.py sync' to update.`;
-
-  const banner = document.getElementById('captain-banner');
-  banner.style.display = 'flex';
-  document.getElementById('cap-name').textContent = squad.captain;
-
-  renderGrid(squad.starting_xi, squad.captain, 'xi-grid');
-  renderGrid(squad.bench, squad.captain, 'bench-grid');
-
-  // Simple transfer suggestion: cheapest starter vs best value available
-  // (full logic runs server-side; here we just show the pre-computed suggestions)
-  const tList = document.getElementById('transfers-list');
-  if (squad.suggestions && squad.suggestions.length) {
-    tList.innerHTML = squad.suggestions.map(s => `
-      <div class="transfer-item">
-        <span class="out">OUT: ${s.out_name} (${s.out_pos}, £${s.out_price}m)</span>
-        <span class="arrow">→</span>
-        <span class="inn">IN: ${s.in_name} (${s.in_pos}, £${s.in_price}m)</span>
-        <span class="gain">+${s.xpts_gain} est. pts</span>
-      </div>`).join('');
-  } else {
-    tList.innerHTML = '<div style="padding:.7rem 1rem;color:var(--muted);font-size:.85rem">No transfers recommended — squad is optimal for current data. Re-run sync after gameweek 1 for live recommendations.</div>';
+  if (!squads) {
+    document.getElementById('squad-view').innerHTML =
+      '<div style="padding:2rem;color:var(--red)">Run <code>python src/main.py sync</code> to generate squad data.</div>';
+    return;
   }
+
+  allSquads = squads;
+  buildTabs(squads);
+  buildCompareTable(squads);
+  renderSquad(0);
+  document.getElementById('last-updated').textContent =
+    `Data last refreshed: ${meta.last_updated} · Run 'python src/main.py sync' to update`;
 }
 
-loadSquad().catch(e => {
-  document.getElementById('xi-grid').innerHTML = `<div style="padding:1rem;color:var(--red)">Error loading data: ${e.message}. Run 'python src/main.py sync' first.</div>`;
-});
+init();
 </script>
 </body>
 </html>

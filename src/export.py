@@ -104,7 +104,19 @@ def export_meta(df) -> dict:
     }
 
 
-def run(df, squad_result, rounds_data=None):
+def export_all_squads(squad_results: list[dict]) -> list[dict]:
+    """Export all strategy squads to a single JSON array."""
+    out = []
+    for result in squad_results:
+        s = export_squad(result)
+        s["strategy_id"]          = result.get("strategy_id", "")
+        s["strategy_name"]        = result.get("strategy_name", "")
+        s["strategy_description"] = result.get("strategy_description", "")
+        out.append(s)
+    return out
+
+
+def run(df, squad_result, rounds_data=None, all_squads=None):
     PUBLIC_DATA.mkdir(parents=True, exist_ok=True)
 
     players = export_players(df)
@@ -125,6 +137,13 @@ def run(df, squad_result, rounds_data=None):
         json.dumps(meta, ensure_ascii=False), encoding="utf-8"
     )
     print(f"  exported meta -> public/data/meta.json")
+
+    if all_squads:
+        squads_export = export_all_squads(all_squads)
+        (PUBLIC_DATA / "squads.json").write_text(
+            json.dumps(squads_export, ensure_ascii=False), encoding="utf-8"
+        )
+        print(f"  exported {len(squads_export)} strategy squads -> public/data/squads.json")
 
     if rounds_data:
         (PUBLIC_DATA / "rounds.json").write_text(

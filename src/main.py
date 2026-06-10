@@ -45,8 +45,10 @@ def cmd_sync(args):
     print("\n[1/4] Fetching player data...")
     df = load_or_fetch(client, use_fbref=use_fbref)
 
-    print("\n[2/4] Running optimizer...")
-    result = build_squad(df)
+    print("\n[2/4] Running optimizer (5 strategies)...")
+    from optimizer import build_top_n_squads
+    all_squads = build_top_n_squads(df, n=5)
+    result = all_squads[0]  # Moneyball squad = primary
     print_squad(result)
 
     print("\n[3/4] Fetching squad player images...")
@@ -75,7 +77,7 @@ def cmd_sync(args):
         rounds_data = client.get_rounds()
     except Exception:
         pass
-    export_run(df, result, rounds_data)
+    export_run(df, result, rounds_data, all_squads=all_squads)
 
     print("\nDone. Run 'python src/main.py serve' to preview the site.")
 
