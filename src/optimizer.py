@@ -184,14 +184,19 @@ def build_top_n_squads(df: pd.DataFrame, n: int = 5) -> list[dict]:
         df_s = df.copy()
         df_s["_strat_score"] = strategy["score_fn"](df_s)
 
-        # Temporarily replace value_score with strategy score for the optimizer
+        # The optimizer uses xpts when present — overwrite it with the strategy score
+        # (scaled back to point-like magnitude so captain logic stays sane)
+        df_s["_xpts_orig"]  = df_s.get("xpts", df_s["_strat_score"])
+        df_s["xpts"]        = df_s["_strat_score"] * df_s["price"]  # rescale to pts range
         df_s["value_score"] = df_s["_strat_score"]
-        # Keep xpts as-is so captain logic still uses real expected points
-        if "xpts" not in df_s.columns:
-            df_s["xpts"] = df_s["_strat_score"] * df_s["price"]
 
         try:
             result = build_squad(df_s)
+            # Restore real xpts on the squad DataFrames for display
+            orig_xpts = df_s.set_index("id")["_xpts_orig"]
+            for key in ("starting_xi", "bench"):
+                result[key]["xpts"] = result[key]["id"].map(orig_xpts).fillna(0)
+            result["total_xpts"] = result["starting_xi"]["xpts"].sum()
             result["strategy_id"]          = strategy["id"]
             result["strategy_name"]        = strategy["name"]
             result["strategy_description"] = strategy["description"]
