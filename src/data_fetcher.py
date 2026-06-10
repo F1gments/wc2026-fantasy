@@ -206,11 +206,60 @@ def load_or_fetch(client: FifaFantasyClient, use_fbref: bool = True) -> pd.DataF
     if use_fbref:
         df = enrich_with_external_stats(df)
 
-    # Always apply scoring-system-based expected points model
+    # Build Transfermarkt market value lookup for non-Big5 players
+    mv_lookup = _build_mv_lookup(df)
+
+    # Apply scoring model with all four algorithms
     from scoring import add_expected_points
-    df = add_expected_points(df)
+    df = add_expected_points(df, mv_lookup=mv_lookup)
 
     return df
+
+
+def _build_mv_lookup(df: pd.DataFrame) -> dict[str, float]:
+    """
+    Fetch Transfermarkt market values for players missing understat stats.
+    Caches aggressively — only fetches players not already in cache.
+    Returns {normalised_name: market_value_m}.
+    """
+    import unicodedata, re
+    from pathlib import Path
+
+    cache_path = Path(__file__).parent.parent / "data" / "cache" / "transfermarkt_mv.json"
+
+    # Load existing cache
+    mv_cache: dict[str, float] = {}
+    if cache_path.exists():
+        import json
+        try:
+            raw = json.loads(cache_path.read_text())
+            # Support both {name: value} and list-of-dicts formats
+            if isinstance(raw, dict):
+                mv_cache = raw
+            elif isinstance(raw, list):
+                for item in raw:
+                    n = item.get("tm_name", "")
+                    v = item.get("market_value_m", 0)
+                    if n:
+                        mv_cache[_norm_name(n)] = float(v or 0)
+        except Exception:
+            pass
+
+    def _norm_name(s):
+        nfkd = unicodedata.normalize("NFKD", str(s))
+        return re.sub(r"[^a-z0-9 ]", "", nfkd.encode("ascii", "ignore").decode().lower()).strip()
+
+    if mv_cache:
+        print(f"  Using {len(mv_cache)} cached Transfermarkt market values")
+
+    # Build lookup from cache
+    lookup = {}
+    for _, row in df.iterrows():
+        key = _norm_name(str(row.get("name", "")))
+        if key in mv_cache:
+            lookup[key] = mv_cache[key]
+
+    return lookup
 
 
 if __name__ == "__main__":

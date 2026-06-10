@@ -1,113 +1,180 @@
 """
-Expected points model based on the official WC2026 Fantasy scoring system.
+Expected points model — official WC2026 Fantasy scoring system.
+
+Incorporates four algorithms:
+  1. Penalty taker bonus      — extra goal/pen probability for known takers
+  2. Transfermarkt market value — quality signal for non-Big5 players
+  3. Fixture difficulty        — opponent-adjusted CS and attack modifiers
+  4. Tournament depth          — expected total games based on FIFA rankings
 
 Scoring rules:
-  All:   appearance <60min +1, 60+min +2, assist +3, yellow -1, red -2
-  GK:    clean sheet +5, pen save +3, every 3 saves +1, goal +9
-  DEF:   clean sheet +5, each extra goal conceded -1, goal +7
-  MID:   clean sheet +1, goal +6, every 3 tackles +1, every 2 chances created +1
-  FWD:   goal +5, every 2 shots on target +1
-
-Because we have no WC-specific stats yet, we use:
-  - Ownership % as the crowd's WC-specific quality signal
-  - Defensive tier per country as a proxy for clean-sheet probability
-  - Price as a proxy for attacking output (FIFA prices reflect expected scoring)
+  All:  appearance <60min +1, 60+min +2, assist +3, yellow -1, red -2
+  GK:   clean sheet +5, pen save +3, every 3 saves +1, goal +9
+  DEF:  clean sheet +5, each extra goal conceded -1, goal +7
+  MID:  clean sheet +1, goal +6, every 3 tackles +1, every 2 chances created +1
+  FWD:  goal +5, every 2 shots on target +1
+  Bonus: pen taker wins pen +2, scouting bonus +2
 """
 
+from __future__ import annotations
+import unicodedata
+import re
 import pandas as pd
 
-# Rough clean-sheet probability tiers for group stage
-# Based on WC qualifying defensive records and squad quality
-# Scale: 0.0 (open/weak) → 1.0 (elite defence)
+# Lazy-loaded singletons — populated on first call to add_expected_points()
+_fixture_scores: dict | None = None
+_depth_table:    dict | None = None
+
+
+def _norm(s: str) -> str:
+    nfkd = unicodedata.normalize("NFKD", str(s))
+    return re.sub(r"[^a-z0-9 ]", "", nfkd.encode("ascii", "ignore").decode().lower()).strip()
+
+
+def _load_singletons():
+    global _fixture_scores, _depth_table
+    if _fixture_scores is not None:
+        return
+
+    from algorithms.fixture_difficulty import load_fixture_scores
+    from algorithms.tournament_depth import build_depth_table
+    from algorithms.fixture_difficulty import FIFA_RANKINGS
+
+    _fixture_scores = load_fixture_scores()
+    all_abbrs = list(set(list(FIFA_RANKINGS.keys()) + list(_fixture_scores.keys())))
+    _depth_table = build_depth_table(all_abbrs, _fixture_scores)
+
+
+# --- Defensive tier (base clean sheet probability before fixture adjustment) ---
 DEFENSIVE_TIER: dict[str, float] = {
-    # Elite
     "FRA": 0.85, "ESP": 0.82, "ENG": 0.80, "ARG": 0.80,
     "BRA": 0.78, "POR": 0.78, "GER": 0.76, "NED": 0.74,
-    # Strong
     "ITA": 0.72, "URU": 0.70, "CRO": 0.70, "SUI": 0.68,
     "BEL": 0.67, "DEN": 0.66, "AUT": 0.65, "USA": 0.63,
-    "CAN": 0.62, "MEX": 0.62, "MOR": 0.62, "SEN": 0.60,
-    "JPN": 0.60, "KOR": 0.58, "AUS": 0.57, "POL": 0.57,
-    "TUR": 0.56, "SCO": 0.55, "NOR": 0.55, "SWE": 0.54,
-    # Average
-    "NGA": 0.50, "CIV": 0.50, "CMR": 0.49, "GHA": 0.48,
-    "COL": 0.52, "VEN": 0.50, "CHI": 0.48, "PER": 0.47,
-    "ECU": 0.47, "PAR": 0.46, "BOL": 0.44,
-    "IRN": 0.52, "SAU": 0.48, "QAT": 0.45,
+    "CAN": 0.62, "MEX": 0.62, "MOR": 0.62, "MAR": 0.62,
+    "SEN": 0.60, "JPN": 0.60, "KOR": 0.58, "AUS": 0.57,
+    "POL": 0.57, "TUR": 0.56, "SCO": 0.55, "NOR": 0.55,
+    "SWE": 0.54, "NGA": 0.50, "CIV": 0.50, "CMR": 0.49,
+    "GHA": 0.48, "COL": 0.52, "VEN": 0.50, "CHI": 0.48,
+    "PER": 0.47, "ECU": 0.47, "PAR": 0.46, "BOL": 0.44,
+    "IRN": 0.52, "SAU": 0.48, "KSA": 0.48, "QAT": 0.45,
+    "COD": 0.48, "ALG": 0.47, "TUN": 0.46, "EGY": 0.45,
+    "CZE": 0.56, "BIH": 0.44, "RSA": 0.42, "HAI": 0.38,
+    "PAN": 0.42, "CRC": 0.44, "JOR": 0.40, "CPV": 0.38,
+    "NZL": 0.40, "IRQ": 0.40, "CUW": 0.36, "UZB": 0.42,
 }
 DEFAULT_DEF_TIER = 0.45
 
 
-# How many matches expected per player (group = 3 guaranteed, favs go deeper)
-# Simple proxy: use price as depth-of-run indicator (FIFA priced strong nations higher)
-def matches_expected(price: float) -> float:
-    """Rough expected matches based on price tier (proxy for team quality)."""
-    if price >= 9.0:
-        return 5.5   # elite: expect QF+
-    elif price >= 7.0:
-        return 4.5   # strong: expect R16
-    elif price >= 5.5:
-        return 3.8   # solid: expect R32
-    else:
-        return 3.0   # group stage minimum
-
-
-def expected_points(row: pd.Series) -> float:
+def expected_points(row: pd.Series, mv_lookup: dict[str, float] | None = None) -> float:
     """
-    Estimate total tournament points for a player row.
-    Returns a float used as the optimisation objective.
+    Estimate total tournament points for a single player row.
+
+    mv_lookup: {normalised_name: market_value_millions} for Transfermarkt enrichment.
     """
+    _load_singletons()
+
     pos     = row.get("position", "")
-    price   = float(row.get("price", 0) or 0)
-    country = str(row.get("country", ""))
-    own     = float(row.get("ownership", 0) or 0)  # 0-100 %
+    price   = float(row.get("price",     0) or 0)
+    country = str(row.get("country",     ""))
+    own     = float(row.get("ownership", 0) or 0)
+    name    = str(row.get("name",        ""))
+    norm    = _norm(name)
 
-    def_tier = DEFENSIVE_TIER.get(country, DEFAULT_DEF_TIER)
-    n_games  = matches_expected(price)
+    # --- Understat stats (0 when not matched) ---
+    xg90  = float(row.get("xg_per90",  0) or 0)
+    xa90  = float(row.get("xa_per90",  0) or 0)
+    sv_pct = float(row.get("save_pct", 0) or 0)
+    cs90   = float(row.get("cs_per90", 0) or 0)
+
+    has_stats = xg90 > 0 or sv_pct > 0
+
+    # --- Algorithm 1: Penalty taker bonus ---
+    from algorithms.penalty_takers import get_pen_bonus
+    pen_conf = get_pen_bonus(norm)
+    # Extra goals from penalties: ~1 pen/4 games for confirmed taker
+    pen_goal_rate = pen_conf * 0.25  # additional goals/game from pens
+
+    # --- Algorithm 2: Transfermarkt market value ---
+    market_value = 0.0
+    if mv_lookup:
+        market_value = mv_lookup.get(norm, 0.0)
+
+    # --- Algorithm 3: Fixture difficulty ---
+    fix = _fixture_scores.get(country, {})
+    cs_fix_mod  = fix.get("cs_modifier",     1.0)
+    att_fix_mod = fix.get("attack_modifier", 1.0)
+
+    # --- Algorithm 4: Tournament depth (expected total games) ---
+    n_games = _depth_table.get(country, 3.5) if _depth_table else 3.5
+
+    # --- Base metrics ---
+    def_tier    = DEFENSIVE_TIER.get(country, DEFAULT_DEF_TIER)
+    own_norm    = min(own / 40.0, 1.0)
+
+    # Adjust defensive probability with fixture difficulty
+    adj_cs_prob = def_tier * cs_fix_mod
+    adj_cs_prob = max(0.05, min(0.95, adj_cs_prob))
 
     # Appearance points: assume starters play 90 min → +2/game
-    app_pts = 2 * n_games
+    app_pts = 2.0 * n_games
 
-    # Ownership normalised to 0-1 (crowd quality signal)
-    own_norm = min(own / 40.0, 1.0)  # 40% ownership = maxed signal
+    # Market value as a quality boost for players without stats
+    # €60m = elite player, scale 0-1 relative to €100m ceiling
+    mv_quality = min(market_value / 100.0, 1.0) if market_value > 0 else 0.0
 
     if pos == "GK":
-        # Clean sheet: +5, ~def_tier probability per game
-        cs_pts    = 5 * def_tier * n_games
-        # Saves bonus: avg ~3.5 saves/game → ~1 bonus point/game for good keepers
-        save_pts  = own_norm * 1.0 * n_games
+        cs_pts   = 5.0 * adj_cs_prob * n_games
+        if has_stats and sv_pct > 0:
+            save_pts = (sv_pct / 100) * 3.5 * n_games / 3   # ~3.5 saves/game, 1pt per 3
+        else:
+            save_pts = (own_norm * 0.8 + mv_quality * 0.5) * n_games
         total = app_pts + cs_pts + save_pts
 
     elif pos == "DEF":
-        # Clean sheet: +5 per game with def probability
-        cs_pts    = 5 * def_tier * n_games
-        # Goals: attacking DEFs (high price) score more — proxy with price
-        goal_rate = max(0, (price - 4.0) / 6.0) * 0.12   # goals per game
-        goal_pts  = 7 * goal_rate * n_games
-        # Assists
-        ast_pts   = 3 * goal_rate * 0.8 * n_games
-        total = app_pts + cs_pts + goal_pts + ast_pts
+        cs_pts   = 5.0 * adj_cs_prob * n_games
+        if has_stats:
+            # Use actual xg/xa from understat
+            goal_pts = (7.0 * xg90 + 3.0 * xa90) * n_games * att_fix_mod
+        else:
+            # Price + market value proxy
+            price_quality = max(0, (price - 4.0) / 6.0)
+            mv_adj        = max(price_quality, mv_quality * 0.6)
+            goal_rate     = mv_adj * 0.12
+            goal_pts      = (7.0 * goal_rate + 3.0 * goal_rate * 0.8) * n_games * att_fix_mod
+        # Penalty taker bonus (rare for DEF but possible)
+        pen_pts  = pen_conf * 2.0 * 0.25 * n_games
+        total = app_pts + cs_pts + goal_pts + pen_pts
 
     elif pos == "MID":
-        # Goals: high price = more attacking MID
-        goal_rate = max(0, (price - 5.0) / 5.0) * 0.20
-        goal_pts  = 6 * goal_rate * n_games
-        # Assists
-        ast_pts   = 3 * goal_rate * 1.2 * n_games
-        # Chances created bonus: ~0.5 pts/game for attacking MIDs
-        cc_pts    = own_norm * 0.5 * n_games
-        # Mild CS bonus
-        cs_pts    = 1 * def_tier * n_games * 0.3
-        total = app_pts + goal_pts + ast_pts + cc_pts + cs_pts
+        if has_stats:
+            goal_pts = (6.0 * xg90 + 3.0 * xa90) * n_games * att_fix_mod
+            # Chance creation bonus (~1pt per 2 chances created, proxy from xa90)
+            cc_pts   = (xa90 * 1.5) * n_games
+        else:
+            price_quality = max(0, (price - 5.0) / 5.0)
+            mv_adj        = max(price_quality, mv_quality * 0.7)
+            goal_rate     = mv_adj * 0.20
+            goal_pts      = (6.0 * goal_rate + 3.0 * goal_rate * 1.2) * n_games * att_fix_mod
+            cc_pts        = own_norm * 0.5 * n_games
+        pen_pts  = pen_conf * (5.0 * pen_goal_rate + 2.0 * pen_conf * 0.3) * n_games
+        cs_pts   = 1.0 * adj_cs_prob * n_games * 0.3   # mid CS is small bonus
+        total = app_pts + goal_pts + cc_pts + pen_pts + cs_pts
 
     elif pos == "FWD":
-        # Goals: price heavily predicts FWD output
-        goal_rate = max(0, (price - 4.5) / 6.0) * 0.35
-        goal_pts  = 5 * goal_rate * n_games
-        # Shots on target bonus (~1 SOT bonus/2 games for regular starters)
-        sot_pts   = own_norm * 0.5 * n_games
-        ast_pts   = 3 * goal_rate * 0.4 * n_games
-        total = app_pts + goal_pts + sot_pts + ast_pts
+        if has_stats:
+            goal_pts = (5.0 * (xg90 + pen_goal_rate) + 1.0 * xg90 * 2) * n_games * att_fix_mod
+            ast_pts  = 3.0 * xa90 * n_games
+        else:
+            price_quality = max(0, (price - 4.5) / 6.0)
+            mv_adj        = max(price_quality, mv_quality * 0.8)
+            goal_rate     = (mv_adj * 0.35) + pen_goal_rate
+            goal_pts      = (5.0 * goal_rate + 1.0 * goal_rate * 2) * n_games * att_fix_mod
+            ast_pts       = 3.0 * goal_rate * 0.4 * n_games
+        # Penalty taker: +2 per pen won, ~0.3 pens won per game for confirmed taker
+        pen_pts  = pen_conf * 2.0 * 0.3 * n_games
+        sot_pts  = own_norm * 0.4 * n_games
+        total = app_pts + goal_pts + ast_pts + pen_pts + sot_pts
 
     else:
         total = app_pts
@@ -115,8 +182,11 @@ def expected_points(row: pd.Series) -> float:
     return round(total, 3)
 
 
-def add_expected_points(df: pd.DataFrame) -> pd.DataFrame:
+def add_expected_points(
+    df: pd.DataFrame,
+    mv_lookup: dict[str, float] | None = None,
+) -> pd.DataFrame:
     df = df.copy()
-    df["xpts"] = df.apply(expected_points, axis=1)
+    df["xpts"] = df.apply(lambda r: expected_points(r, mv_lookup), axis=1)
     df["value_score"] = df["xpts"] / df["price"].replace(0, pd.NA)
     return df.fillna(0)

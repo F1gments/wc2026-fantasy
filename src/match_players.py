@@ -66,20 +66,27 @@ def build_fbref_lookup(
     row with the most minutes (club stats preferred over international).
     """
     def tag(df, source):
+        if df is None or df.empty:
+            return pd.DataFrame()
         d = df.copy()
         d["source"] = source
+        # Ensure required columns exist
+        for col in ("fbref_name", "nationality", "minutes"):
+            if col not in d.columns:
+                d[col] = "" if col != "minutes" else 0
         return d
 
-    # Stack outfield and GK frames together (GK frame has fewer columns — fill missing)
-    all_frames = pd.concat([
-        tag(outfield, "club_out"),
-        tag(goalkeep, "club_gk"),
-        tag(intl_out, "intl_out"),
-        tag(intl_gk,  "intl_gk"),
-    ], ignore_index=True)
+    frames = [tag(outfield, "club_out"), tag(goalkeep, "club_gk"),
+              tag(intl_out, "intl_out"), tag(intl_gk,  "intl_gk")]
+    frames = [f for f in frames if not f.empty]
+
+    if not frames:
+        return pd.DataFrame(columns=["fbref_name", "nationality", "norm_name", "nation3", "minutes", "source"])
+
+    all_frames = pd.concat(frames, ignore_index=True)
 
     all_frames["norm_name"] = all_frames["fbref_name"].apply(_normalise)
-    all_frames["nation3"]   = all_frames["nationality"].apply(_fbref_nation)
+    all_frames["nation3"]   = all_frames.get("nationality", pd.Series("", index=all_frames.index)).apply(_fbref_nation)
     all_frames["minutes"]   = pd.to_numeric(all_frames.get("minutes", 0), errors="coerce").fillna(0)
 
     # Keep highest-minutes row per (norm_name, nation3)
