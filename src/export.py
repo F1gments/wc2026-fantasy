@@ -14,6 +14,8 @@ import os
 from datetime import datetime, timezone
 from pathlib import Path
 
+CACHE_DIR = Path(__file__).parent.parent / "data" / "cache"
+
 sys.path.insert(0, os.path.dirname(__file__))
 
 PUBLIC_DATA = Path(__file__).parent.parent / "public" / "data"
@@ -52,9 +54,12 @@ def export_players(df) -> list[dict]:
             "save_pct":     round(float(row.get("save_pct", 0)), 1),
             "cs_per90":     round(float(row.get("cs_per90", 0)), 3),
             # Live WC stats (populated after games start)
-            "wc_pts":       int(float(row.get("total_pts", 0))),
-            "wc_form":      round(float(row.get("form", 0)), 1),
-            "last_round":   int(float(row.get("last_round", 0))),
+            "wc_pts":         int(float(row.get("total_pts", 0))),
+            "wc_form":        round(float(row.get("form", 0)), 1),
+            "last_round":     int(float(row.get("last_round", 0))),
+            # Post-blend fields (present only after MD1)
+            "model_xpts":     round(float(row.get("model_xpts", row.get("xpts", 0))), 1),
+            "remaining_xpts": round(float(row.get("remaining_xpts", row.get("xpts", 0))), 1),
             # Matching metadata
             "has_stats":    bool(row.get("match_score", 0) > 0),
             "match_score":  int(float(row.get("match_score", 0))),
@@ -91,16 +96,20 @@ def export_squad(result: dict) -> dict:
     }
 
 
-def export_meta(df) -> dict:
+def export_meta(df, rounds_played: int = 0) -> dict:
     total = len(df)
     matched = int((df.get("match_score", 0) > 0).sum()) if "match_score" in df.columns else 0
+    players_with_wc_pts = int((df.get("total_pts", 0) > 0).sum()) if "total_pts" in df.columns else 0
+    wc_weight = round(min(0.20 + 0.15 * rounds_played, 0.85), 2) if rounds_played > 0 else 0
     return {
-        "last_updated":   datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
-        "total_players":  total,
-        "matched_stats":  matched,
-        "coverage_pct":   round(matched / total * 100, 1) if total else 0,
-        "tournament_started": False,  # flip to True once MD1 kicks off
-        "current_round":  0,
+        "last_updated":       datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+        "total_players":      total,
+        "matched_stats":      matched,
+        "coverage_pct":       round(matched / total * 100, 1) if total else 0,
+        "tournament_started": rounds_played > 0,
+        "current_round":      rounds_played,
+        "wc_blend_weight":    wc_weight,
+        "players_with_wc_pts": players_with_wc_pts,
     }
 
 
@@ -116,8 +125,15 @@ def export_all_squads(squad_results: list[dict]) -> list[dict]:
     return out
 
 
-def run(df, squad_result, rounds_data=None, all_squads=None):
+def run(df, squad_result, rounds_data=None, all_squads=None, rounds_played: int = 0):
     PUBLIC_DATA.mkdir(parents=True, exist_ok=True)
+
+    # Save fresh rounds to cache so detect_rounds_played() can use them next run
+    if rounds_data:
+        CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        (CACHE_DIR / "rounds.json").write_text(
+            json.dumps(rounds_data, ensure_ascii=False)
+        )
 
     players = export_players(df)
     (PUBLIC_DATA / "players.json").write_text(
@@ -132,7 +148,7 @@ def run(df, squad_result, rounds_data=None, all_squads=None):
     print(f"  exported squad ({len(squad['starting_xi'])} starters, "
           f"{len(squad['bench'])} bench) -> public/data/squad.json")
 
-    meta = export_meta(df)
+    meta = export_meta(df, rounds_played=rounds_played)
     (PUBLIC_DATA / "meta.json").write_text(
         json.dumps(meta, ensure_ascii=False), encoding="utf-8"
     )
@@ -151,5 +167,16 @@ def run(df, squad_result, rounds_data=None, all_squads=None):
         )
         print(f"  exported rounds -> public/data/rounds.json")
 
+    # Export transfer advisor data
+    from transfers import generate_transfer_report
+    transfers = generate_transfer_report(df, rounds_played=rounds_played)
+    (PUBLIC_DATA / "transfers.json").write_text(
+        json.dumps(transfers, ensure_ascii=False), encoding="utf-8"
+    )
+    print(f"  exported transfer advisor -> public/data/transfers.json")
+
     print(f"\n  Coverage: {meta['coverage_pct']}% of players have external stats")
+    if rounds_played > 0:
+        print(f"  WC form blend: {meta['wc_blend_weight']:.0%} weight on actual WC points "
+              f"({meta['players_with_wc_pts']} players with live data)")
     print(f"  Last updated: {meta['last_updated']}")

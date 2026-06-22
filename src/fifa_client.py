@@ -58,7 +58,8 @@ class FifaFantasyClient:
         return data.get("data", data) if isinstance(data, dict) else data
 
     def get_rounds(self) -> list[dict]:
-        return self._get_json("/rounds.json", cache_key="rounds")
+        # No cache — rounds change after every game, always fetch fresh
+        return self._get_json("/rounds.json")
 
     def get_squads(self) -> list[dict]:
         return self._get_json("/squads.json", cache_key="squads")

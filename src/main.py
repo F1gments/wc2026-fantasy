@@ -42,6 +42,18 @@ def cmd_sync(args):
             cache.unlink()
             print("Cleared FIFA player cache — will re-download.")
 
+    # Fetch rounds first and cache them so detect_rounds_played() sees live data
+    import json
+    from pathlib import Path
+    rounds_data = None
+    try:
+        rounds_data = client.get_rounds()
+        cache_path = Path(__file__).parent.parent / "data" / "cache" / "rounds.json"
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        cache_path.write_text(json.dumps(rounds_data))
+    except Exception as e:
+        print(f"WARNING: Could not fetch rounds data — {e}")
+
     print("\n[1/4] Fetching player data...")
     df = load_or_fetch(client, use_fbref=use_fbref)
 
@@ -72,12 +84,9 @@ def cmd_sync(args):
 
     print("\n[4/4] Exporting site data...")
     from export import run as export_run
-    rounds_data = None
-    try:
-        rounds_data = client.get_rounds()
-    except Exception:
-        pass
-    export_run(df, result, rounds_data, all_squads=all_squads)
+    from data_fetcher import detect_rounds_played
+    rounds_played = detect_rounds_played()
+    export_run(df, result, rounds_data, all_squads=all_squads, rounds_played=rounds_played)
 
     print("\nDone. Run 'python src/main.py serve' to preview the site.")
 

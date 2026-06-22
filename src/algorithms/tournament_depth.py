@@ -39,21 +39,41 @@ def _win_prob(rank_a: int, rank_b: int) -> float:
     return 1 / (1 + math.exp(-diff / 15))
 
 
-def expected_games(team_abbr: str, fixture_scores: dict) -> float:
+def expected_games(team_abbr: str, fixture_scores: dict, rounds_played: int = 0) -> float:
     """
     Calculate expected total games for a team's players in the tournament.
 
-    Group stage: 3 guaranteed.
+    WC 2026 format: 48 teams in 16 groups of 3. Best 8 third-placed teams also
+    advance, meaning top teams will rest stars in Game 3 once qualification is
+    secured — often after just 2 group games.
+
+    Group stage: 3 games, but game 3 is discounted for elite teams (rest risk).
     R32 to Final: each round adds P(team reaches that round).
     """
     rank = FIFA_RANKINGS.get(team_abbr, DEFAULT_RANK)
 
-    # --- Group stage: 3 guaranteed games ---
-    base = 3.0
+    # --- Game 3 rest risk ---
+    # WC 2026: even 3rd place can qualify (best 8 of 16 groups). Top teams
+    # typically clinch top-2 after 2 wins and rotate heavily in game 3.
+    if rank <= 8:
+        game3_play_prob = 0.55   # ARG/BRA/FRA/ENG — heavy rotation expected
+    elif rank <= 16:
+        game3_play_prob = 0.72   # ESP/NED/POR/GER — moderate rest risk
+    elif rank <= 24:
+        game3_play_prob = 0.88   # Solid teams, some rotation possible
+    else:
+        game3_play_prob = 1.0    # Weaker teams can't afford to rotate
+
+    # Group expected total: games 1+2 are full intensity; game 3 carries rest risk
+    # Formula holds regardless of rounds_played (2 certain + 1 uncertain)
+    games_played = min(rounds_played, 3)
+    if games_played >= 3:
+        base = 3.0
+    else:
+        base = 2.0 + game3_play_prob
 
     # --- Estimate P(qualify from group) ---
-    # Teams with rank <= 16 → high probability; weaker teams lower
-    # Simplified: top 24 teams have very high (>80%) group stage survival
+    # Top 2 from each group advance; best 8 third-placed also qualify
     if rank <= 8:
         p_qualify = 0.95
     elif rank <= 16:
@@ -89,9 +109,9 @@ def expected_games(team_abbr: str, fixture_scores: dict) -> float:
     return round(expected, 2)
 
 
-def build_depth_table(all_abbrs: list[str], fixture_scores: dict) -> dict[str, float]:
+def build_depth_table(all_abbrs: list[str], fixture_scores: dict, rounds_played: int = 0) -> dict[str, float]:
     """Build expected games lookup for all team abbreviations."""
-    return {abbr: expected_games(abbr, fixture_scores) for abbr in all_abbrs}
+    return {abbr: expected_games(abbr, fixture_scores, rounds_played) for abbr in all_abbrs}
 
 
 if __name__ == "__main__":
@@ -100,7 +120,7 @@ if __name__ == "__main__":
     from fixture_difficulty import load_fixture_scores
     fs = load_fixture_scores()
     teams = list(FIFA_RANKINGS.keys())
-    table = build_depth_table(teams, fs)
+    table = build_depth_table(teams, fs, rounds_played=0)
     ranked = sorted(table.items(), key=lambda x: -x[1])
     print("Expected tournament games by team:")
     for abbr, games in ranked[:20]:

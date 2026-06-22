@@ -21,9 +21,10 @@ import unicodedata
 import re
 import pandas as pd
 
-# Lazy-loaded singletons — populated on first call to add_expected_points()
+# Lazy-loaded singletons — invalidated when rounds_played changes
 _fixture_scores: dict | None = None
 _depth_table:    dict | None = None
+_loaded_rounds_played: int = -1
 
 
 def _norm(s: str) -> str:
@@ -31,18 +32,18 @@ def _norm(s: str) -> str:
     return re.sub(r"[^a-z0-9 ]", "", nfkd.encode("ascii", "ignore").decode().lower()).strip()
 
 
-def _load_singletons():
-    global _fixture_scores, _depth_table
-    if _fixture_scores is not None:
+def _load_singletons(rounds_played: int = 0):
+    global _fixture_scores, _depth_table, _loaded_rounds_played
+    if _fixture_scores is not None and _loaded_rounds_played == rounds_played:
         return
 
-    from algorithms.fixture_difficulty import load_fixture_scores
+    from algorithms.fixture_difficulty import load_fixture_scores, FIFA_RANKINGS
     from algorithms.tournament_depth import build_depth_table
-    from algorithms.fixture_difficulty import FIFA_RANKINGS
 
-    _fixture_scores = load_fixture_scores()
+    _fixture_scores = load_fixture_scores(rounds_completed=rounds_played)
     all_abbrs = list(set(list(FIFA_RANKINGS.keys()) + list(_fixture_scores.keys())))
-    _depth_table = build_depth_table(all_abbrs, _fixture_scores)
+    _depth_table = build_depth_table(all_abbrs, _fixture_scores, rounds_played=rounds_played)
+    _loaded_rounds_played = rounds_played
 
 
 # --- Defensive tier (base clean sheet probability before fixture adjustment) ---
@@ -66,13 +67,14 @@ DEFENSIVE_TIER: dict[str, float] = {
 DEFAULT_DEF_TIER = 0.45
 
 
-def expected_points(row: pd.Series, mv_lookup: dict[str, float] | None = None) -> float:
+def expected_points(row: pd.Series, mv_lookup: dict[str, float] | None = None, rounds_played: int = 0) -> float:
     """
     Estimate total tournament points for a single player row.
 
     mv_lookup: {normalised_name: market_value_millions} for Transfermarkt enrichment.
+    rounds_played: completed fantasy rounds — adjusts fixture difficulty to remaining games.
     """
-    _load_singletons()
+    _load_singletons(rounds_played)
 
     pos     = row.get("position", "")
     price   = float(row.get("price",     0) or 0)
@@ -185,8 +187,41 @@ def expected_points(row: pd.Series, mv_lookup: dict[str, float] | None = None) -
 def add_expected_points(
     df: pd.DataFrame,
     mv_lookup: dict[str, float] | None = None,
+    rounds_played: int = 0,
 ) -> pd.DataFrame:
     df = df.copy()
-    df["xpts"] = df.apply(lambda r: expected_points(r, mv_lookup), axis=1)
+    df["xpts"] = df.apply(lambda r: expected_points(r, mv_lookup, rounds_played), axis=1)
+    df["value_score"] = df["xpts"] / df["price"].replace(0, pd.NA)
+    return df.fillna(0)
+
+
+def blend_wc_form(df: pd.DataFrame, rounds_played: int) -> pd.DataFrame:
+    """
+    After real WC games are played, blend actual performance into xpts.
+
+    wc_weight grows with each completed round:
+      MD1 done: 35%  real WC signal, 65% pre-tournament model
+      MD2 done: 50%  real WC signal, 50% pre-tournament model
+      MD3 done: 65%  real WC signal, 35% pre-tournament model
+
+    The actual scoring rate (pts/round) is projected across the full
+    expected tournament length (~4.5 games on average) and blended in.
+    Players who didn't play (0 pts) are naturally penalised.
+    """
+    if rounds_played <= 0:
+        return df
+
+    wc_weight = min(0.20 + 0.15 * rounds_played, 0.85)
+
+    # Project current WC scoring rate to full tournament
+    EXPECTED_TOTAL_ROUNDS = 4.5   # 3 group (with rest risk) + ~1.5 KO avg
+    pts_per_round = df["total_pts"] / rounds_played
+    projected_wc = pts_per_round * EXPECTED_TOTAL_ROUNDS
+
+    df = df.copy()
+    df["model_xpts"] = df["xpts"]   # preserve pre-blend estimate
+    df["xpts"] = (1 - wc_weight) * df["xpts"] + wc_weight * projected_wc
+    df["xpts"] = df["xpts"].clip(lower=0)
+    df["remaining_xpts"] = (df["xpts"] - df["total_pts"]).clip(lower=0)
     df["value_score"] = df["xpts"] / df["price"].replace(0, pd.NA)
     return df.fillna(0)

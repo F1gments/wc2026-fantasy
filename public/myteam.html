@@ -84,6 +84,45 @@
   .compare-table .active-row{background:rgba(59,130,246,.08);}
 
   .last-updated{text-align:center;padding:.75rem;font-size:.72rem;color:var(--muted);}
+
+  /* TRANSFER ADVISOR */
+  .transfer-view{padding:1rem 1.5rem;}
+  .transfer-banner{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:1rem 1.25rem;margin-bottom:1.25rem;display:flex;gap:1.5rem;align-items:center;flex-wrap:wrap;}
+  .transfer-banner .t-label{font-size:.75rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;}
+  .transfer-banner .t-val{font-size:1.5rem;font-weight:700;color:var(--accent);}
+  .transfer-banner .t-note{font-size:.82rem;color:var(--muted);flex:1;line-height:1.5;}
+
+  .transfer-section{margin-bottom:1.5rem;}
+  .transfer-section h3{font-size:.8rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.6rem;display:flex;align-items:center;gap:.5rem;}
+  .transfer-section h3 .badge{background:var(--border);color:var(--text);border-radius:4px;padding:.1rem .4rem;font-size:.68rem;font-weight:600;}
+  .transfer-section h3 .badge.green{background:#14532d;color:#bbf7d0;}
+  .transfer-section h3 .badge.red{background:#7f1d1d;color:#fecaca;}
+  .transfer-section h3 .badge.amber{background:#78350f;color:#fef3c7;}
+
+  .transfer-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:.65rem;}
+  .transfer-card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:.75rem;transition:border-color .15s;}
+  .transfer-card:hover{border-color:var(--accent);}
+  .transfer-card.rising{border-color:#22c55e44;}
+  .transfer-card.falling{border-color:#ef444444;}
+  .transfer-card.sell-risk{border-left:3px solid var(--red);}
+
+  .t-name{font-size:.85rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .t-country{font-size:.72rem;color:var(--muted);margin-bottom:.4rem;}
+  .t-stats{display:grid;grid-template-columns:1fr 1fr;gap:.25rem .5rem;font-size:.7rem;border-top:1px solid var(--border);padding-top:.4rem;margin-top:.4rem;}
+  .t-stat .lbl{color:var(--muted);font-size:.6rem;}
+  .t-stat .val{font-weight:600;}
+  .delta-up{color:var(--green);font-size:.7rem;font-weight:700;}
+  .delta-down{color:var(--red);font-size:.7rem;font-weight:700;}
+
+  .pos-tabs{display:flex;gap:.4rem;margin-bottom:1rem;flex-wrap:wrap;}
+  .pos-tab{padding:.3rem .8rem;border-radius:6px;background:var(--border);color:var(--muted);font-size:.8rem;cursor:pointer;border:1px solid transparent;transition:all .15s;}
+  .pos-tab.active,.pos-tab:hover{background:var(--accent);color:#fff;}
+
+  .price-filter{display:flex;align-items:center;gap:.75rem;margin-bottom:1rem;font-size:.82rem;color:var(--muted);}
+  .price-filter input{width:120px;accent-color:var(--accent);}
+  .price-filter span{min-width:40px;}
+
+  .hidden{display:none;}
 </style>
 </head>
 <body>
@@ -96,6 +135,7 @@
 <div class="tab-bar" id="tab-bar"></div>
 
 <div id="squad-view"></div>
+<div id="transfer-view" class="hidden"></div>
 
 <div class="compare-section">
   <h3>Strategy Comparison</h3>
@@ -114,6 +154,9 @@ const POS_EMOJI = {GK:'🧤',DEF:'🛡️',MID:'⚡',FWD:'⚽'};
 
 let allSquads = [];
 let activeIdx = 0;
+let transferData = null;
+let activePos = 'MID';
+let maxPrice = 15.0;
 
 function trend(wc_pts, xpts) {
   if (!wc_pts) return '<span class="trend-flat">—</span>';
@@ -200,9 +243,29 @@ function renderSquad(idx) {
 function buildTabs(squads) {
   const bar = document.getElementById('tab-bar');
   bar.innerHTML = squads.map((s,i) => `
-    <div class="tab${i===0?' active':''}" onclick="renderSquad(${i})">
+    <div class="tab${i===0?' active':''}" onclick="showSquad(${i})">
       <span class="tab-num">${i+1}</span>${s.strategy_name}
-    </div>`).join('');
+    </div>`).join('')
+    + `<div class="tab" id="tab-transfers" onclick="showTransfers()">
+         <span class="tab-num" style="background:var(--amber);color:#000">⇄</span>Transfer Advisor
+       </div>`;
+}
+
+function showSquad(idx) {
+  document.getElementById('squad-view').classList.remove('hidden');
+  document.getElementById('transfer-view').classList.add('hidden');
+  document.querySelectorAll('.compare-section').forEach(el => el.classList.remove('hidden'));
+  document.getElementById('tab-transfers').classList.remove('active');
+  renderSquad(idx);
+}
+
+function showTransfers() {
+  document.getElementById('squad-view').classList.add('hidden');
+  document.getElementById('transfer-view').classList.remove('hidden');
+  document.querySelectorAll('.compare-section').forEach(el => el.classList.add('hidden'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('tab-transfers').classList.add('active');
+  renderTransfers();
 }
 
 function buildCompareTable(squads) {
@@ -217,10 +280,134 @@ function buildCompareTable(squads) {
     </tr>`).join('');
 }
 
+function transferCard(p, type) {
+  const cls = type === 'rising' ? 'rising' : type === 'falling' ? 'falling' : type === 'sell' ? 'sell-risk' : '';
+  const deltaHtml = p.form_delta != null
+    ? (p.form_delta > 0
+        ? `<span class="delta-up">+${p.form_delta.toFixed(1)} vs model</span>`
+        : `<span class="delta-down">${p.form_delta.toFixed(1)} vs model</span>`)
+    : '';
+  return `
+    <div class="transfer-card ${cls}">
+      <span class="pos-badge pos-${p.position}">${p.position}</span>
+      <div class="t-name" title="${p.name}">${p.name}</div>
+      <div class="t-country">${p.country} · £${p.price}m</div>
+      ${deltaHtml}
+      <div class="t-stats">
+        <div class="t-stat"><div class="lbl">xPts</div><div class="val">${p.xpts}</div></div>
+        <div class="t-stat"><div class="lbl">WC Pts</div><div class="val">${p.wc_pts}</div></div>
+        <div class="t-stat"><div class="lbl">Remaining</div><div class="val">${p.remaining_xpts}</div></div>
+        <div class="t-stat"><div class="lbl">Own%</div><div class="val">${p.ownership}%</div></div>
+      </div>
+    </div>`;
+}
+
+function setPos(pos) {
+  activePos = pos;
+  document.querySelectorAll('.pos-tab').forEach(t =>
+    t.classList.toggle('active', t.dataset.pos === pos));
+  renderTransferPosition();
+}
+
+function setMaxPrice(val) {
+  maxPrice = parseFloat(val);
+  document.getElementById('price-val').textContent = '£' + maxPrice.toFixed(1) + 'm';
+  renderTransferPosition();
+}
+
+function renderTransferPosition() {
+  if (!transferData) return;
+  const d = transferData[activePos];
+  if (!d) return;
+
+  const rounds = transferData.rounds_played || 0;
+  const blend  = transferData.wc_blend_weight || 0;
+
+  const filtered = arr => (arr || []).filter(p => p.price <= maxPrice);
+
+  const topHtml = filtered(d.top_picks).map(p => transferCard(p, 'top')).join('');
+  const risingHtml = filtered(d.rising).map(p => transferCard(p, 'rising')).join('');
+  const fallingHtml = filtered(d.falling).map(p => transferCard(p, 'falling')).join('');
+  const sellHtml = filtered(d.sell_targets || []).map(p => transferCard(p, 'sell')).join('');
+
+  const view = document.getElementById('pos-transfer-body');
+  view.innerHTML = `
+    ${topHtml ? `
+    <div class="transfer-section">
+      <h3>Top Picks <span class="badge">by blended xPts</span></h3>
+      <div class="transfer-grid">${topHtml}</div>
+    </div>` : ''}
+    ${risingHtml && rounds > 0 ? `
+    <div class="transfer-section">
+      <h3>Rising <span class="badge green">outperforming model</span></h3>
+      <div class="transfer-grid">${risingHtml}</div>
+    </div>` : ''}
+    ${fallingHtml && rounds > 0 ? `
+    <div class="transfer-section">
+      <h3>Falling <span class="badge red">underperforming model</span></h3>
+      <div class="transfer-grid">${fallingHtml}</div>
+    </div>` : ''}
+    ${sellHtml && rounds > 0 ? `
+    <div class="transfer-section">
+      <h3>Transfer Out Targets <span class="badge amber">0 WC pts, high pre-tournament model</span></h3>
+      <div class="transfer-grid">${sellHtml}</div>
+    </div>` : ''}
+    ${!topHtml ? '<div style="padding:1rem;color:var(--muted)">No players found in this price range.</div>' : ''}
+  `;
+}
+
+function renderTransfers() {
+  if (!transferData) {
+    document.getElementById('transfer-view').innerHTML =
+      '<div style="padding:2rem;color:var(--muted)">Run <code>python src/main.py sync</code> to generate transfer data.</div>';
+    return;
+  }
+
+  const rounds = transferData.rounds_played || 0;
+  const blend  = Math.round((transferData.wc_blend_weight || 0) * 100);
+
+  const blendNote = rounds > 0
+    ? `Scoring now blends <strong>${blend}% live WC form</strong> + ${100-blend}% pre-tournament model after ${rounds} completed round(s).`
+    : 'Tournament not yet started — model uses pre-tournament stats only. Run sync after MD1 to activate WC form blending.';
+
+  const xferNote = rounds > 0
+    ? `You have <strong>2 free transfers</strong> available before MD${rounds+1}. Extra transfers cost -3 pts each.`
+    : `Transfers open before each matchday. 2 free per gameweek; extras cost -3 pts.`;
+
+  document.getElementById('transfer-view').innerHTML = `
+    <div class="transfer-view">
+      <div class="transfer-banner">
+        <div>
+          <div class="t-label">Transfer Window</div>
+          <div class="t-val">2 Free</div>
+        </div>
+        <div class="t-note">${xferNote}<br><br>${blendNote}</div>
+      </div>
+
+      <div class="pos-tabs">
+        ${['GK','DEF','MID','FWD'].map(p =>
+          `<div class="pos-tab${p===activePos?' active':''}" data-pos="${p}" onclick="setPos('${p}')">${POS_EMOJI[p]} ${p}</div>`
+        ).join('')}
+      </div>
+
+      <div class="price-filter">
+        Max price: <input type="range" min="4" max="15" step="0.5" value="${maxPrice}"
+          oninput="setMaxPrice(this.value)">
+        <span id="price-val">£${maxPrice.toFixed(1)}m</span>
+      </div>
+
+      <div id="pos-transfer-body"></div>
+    </div>
+  `;
+
+  renderTransferPosition();
+}
+
 async function init() {
-  const [squads, meta] = await Promise.all([
+  const [squads, meta, transfers] = await Promise.all([
     fetch('data/squads.json').then(r=>r.json()).catch(()=>null),
     fetch('data/meta.json').then(r=>r.json()).catch(()=>({last_updated:'unknown'})),
+    fetch('data/transfers.json').then(r=>r.json()).catch(()=>null),
   ]);
 
   if (!squads) {
@@ -230,11 +417,16 @@ async function init() {
   }
 
   allSquads = squads;
+  transferData = transfers;
   buildTabs(squads);
   buildCompareTable(squads);
-  renderSquad(0);
-  document.getElementById('last-updated').textContent =
-    `Data last refreshed: ${meta.last_updated} · Run 'python src/main.py sync' to update`;
+  showSquad(0);
+
+  let metaText = `Data last refreshed: ${meta.last_updated}`;
+  if (meta.tournament_started) {
+    metaText += ` · Round ${meta.current_round} complete · WC blend ${Math.round(meta.wc_blend_weight*100)}%`;
+  }
+  document.getElementById('last-updated').textContent = metaText;
 }
 
 init();

@@ -12,7 +12,8 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(__file__))
 from fifa_client import FifaFantasyClient
 
-RAW_DIR = Path(__file__).parent.parent / "data" / "raw"
+RAW_DIR   = Path(__file__).parent.parent / "data" / "raw"
+CACHE_DIR = Path(__file__).parent.parent / "data" / "cache"
 
 
 def _build_squad_map(client: FifaFantasyClient) -> dict[int, str]:
@@ -172,6 +173,33 @@ def enrich_value_metrics(df: pd.DataFrame) -> pd.DataFrame:
     return df.fillna(0)
 
 
+def detect_rounds_played() -> int:
+    """
+    Count completed fantasy rounds by checking whether match scores are present
+    in the cached rounds.json. A round is complete when all its matches have
+    non-null homeScore values (i.e. every game in that GW has been played).
+    """
+    rounds_path = CACHE_DIR / "rounds.json"
+    if not rounds_path.exists():
+        return 0
+    try:
+        rounds_data = json.loads(rounds_path.read_text())
+        completed = 0
+        for rnd in sorted(rounds_data, key=lambda r: r.get("id", 99)):
+            if rnd.get("id", 99) > 3:  # Only group stage rounds 1-3
+                break
+            matches = rnd.get("tournaments", [])
+            if not matches:
+                continue
+            if all(m.get("homeScore") is not None for m in matches):
+                completed += 1
+            else:
+                break   # Partial round means subsequent rounds aren't done either
+        return completed
+    except Exception:
+        return 0
+
+
 def load_or_fetch(client: FifaFantasyClient, use_fbref: bool = True) -> pd.DataFrame:
     raw_cache = RAW_DIR / "players_raw.json"
     if raw_cache.exists():
@@ -209,9 +237,27 @@ def load_or_fetch(client: FifaFantasyClient, use_fbref: bool = True) -> pd.DataF
     # Build Transfermarkt market value lookup for non-Big5 players
     mv_lookup = _build_mv_lookup(df)
 
-    # Apply scoring model with all four algorithms
-    from scoring import add_expected_points
-    df = add_expected_points(df, mv_lookup=mv_lookup)
+    # Detect how many fantasy rounds have completed
+    rounds_played = detect_rounds_played()
+    if rounds_played > 0:
+        print(f"  Detected {rounds_played} completed round(s) — blending WC form into scoring")
+
+    # Apply pre-tournament scoring model (fixture difficulty + depth + penalty takers + MV)
+    from scoring import add_expected_points, blend_wc_form
+    df = add_expected_points(df, mv_lookup=mv_lookup, rounds_played=rounds_played)
+
+    # Blend actual WC points into xpts once real games have been played.
+    # Guard: only blend if a meaningful number of players actually have pts
+    # (the public API sometimes lags — don't penalise everyone with 0s)
+    if rounds_played > 0:
+        players_with_pts = int((df["total_pts"] > 0).sum())
+        if players_with_pts >= 50:
+            df = blend_wc_form(df, rounds_played)
+            print(f"  WC form blend applied (weight={min(0.20 + 0.15*rounds_played, 0.85):.0%}): "
+                  f"{players_with_pts} players have WC points")
+        else:
+            print(f"  WC blend skipped — only {players_with_pts} players have WC points "
+                  f"(public API lag; run sync again after scores update)")
 
     return df
 

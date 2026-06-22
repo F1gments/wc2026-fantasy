@@ -58,15 +58,21 @@ def _rank_to_difficulty(rank: int) -> tuple[float, float]:
         return 1.20, 1.25   # easy opponent: more CS, more goals
 
 
-def build_fixture_scores(rounds_data: list[dict]) -> dict[str, dict]:
+def build_fixture_scores(rounds_data: list[dict], rounds_completed: int = 0) -> dict[str, dict]:
     """
     Build per-team fixture difficulty from group stage rounds (rounds 1-3).
+    rounds_completed: skip rounds already played — only model remaining games.
     Returns dict keyed by team abbr.
     """
     team_fixtures: dict[str, list[dict]] = {}
 
     for rnd in rounds_data:
-        if rnd.get("stage") != "GROUP":
+        rnd_id = rnd.get("id", 99)
+        # WC 2026: rounds 1-3 = group stage (MD1/MD2/MD3), rounds 4+ = KO
+        if rnd_id > 3:
+            continue
+        # Skip already-completed rounds — actual points cover those games
+        if rnd_id <= rounds_completed:
             continue
         for match in rnd.get("tournaments", []):
             home = match.get("homeSquadAbbr", "")
@@ -106,13 +112,13 @@ def build_fixture_scores(rounds_data: list[dict]) -> dict[str, dict]:
     return scores
 
 
-def load_fixture_scores() -> dict[str, dict]:
-    """Load from cached rounds.json."""
+def load_fixture_scores(rounds_completed: int = 0) -> dict[str, dict]:
+    """Load from cached rounds.json, filtering to remaining group fixtures."""
     rounds_path = CACHE_DIR / "rounds.json"
     if not rounds_path.exists():
         return {}
     rounds_data = json.loads(rounds_path.read_text())
-    return build_fixture_scores(rounds_data)
+    return build_fixture_scores(rounds_data, rounds_completed=rounds_completed)
 
 
 if __name__ == "__main__":
